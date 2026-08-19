@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>발화 연습 앱 — Wireframe (Plain)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      padding: 40px 20px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #fff;
+      margin-bottom: 8px;
+      font-size: 24px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #aaa;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    .flow-label {
+      text-align: center;
+      color: #fff;
+      padding: 16px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .flow-label span {
+      background: #e94560;
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .phone-frame {
+      width: 375px;
+      margin: 0 auto 40px;
+      border: 12px solid #222;
+      border-radius: 36px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      position: relative;
+    }
+    .screen {
+      min-height: 667px;
+      padding: 20px 16px 80px;
+      position: relative;
+      background: #fafafa;
+    }
+    .screen-header {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #1a1a2e;
+    }
+    .screen-sub {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      border: 1px solid #eee;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    .card-text {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #555;
+    }
+    .btn-primary {
+      display: block;
+      width: 100%;
+      padding: 18px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+      background: #4a90d9;
+      border: none;
+      border-radius: 14px;
+      margin-bottom: 10px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      color: #333;
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 14px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .btn-p3 {
+      opacity: 0.5;
+      border-style: dashed;
+    }
+    .badge {
+      display: inline-block;
+      background: #e94560;
+      color: #fff;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-green {
+      background: #2ecc71;
+    }
+    .mic-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #4a90d9;
+      color: #fff;
+      border: none;
+      font-size: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 20px auto;
+      box-shadow: 0 4px 12px rgba(74,144,217,0.4);
+    }
+    .stop-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 20px auto;
+      box-shadow: 0 4px 12px rgba(233,69,96,0.4);
+    }
+    .wave {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      height: 120px;
+      margin: 20px 0;
+    }
+    .wave-bar {
+      width: 6px;
+      background: #4a90d9;
+      border-radius: 3px;
+      animation: wave 1s ease-in-out infinite;
+    }
+    .wave-bar:nth-child(1) { height: 20px; animation-delay: 0s; }
+    .wave-bar:nth-child(2) { height: 40px; animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { height: 60px; animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { height: 80px; animation-delay: 0.3s; }
+    .wave-bar:nth-child(5) { height: 50px; animation-delay: 0.15s; }
+    .wave-bar:nth-child(6) { height: 30px; animation-delay: 0.05s; }
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.5); opacity: 0.6; }
+      50% { transform: scaleY(1); opacity: 1; }
+    }
+    .score-big {
+      font-size: 48px;
+      font-weight: 800;
+      color: #4a90d9;
+      text-align: center;
+      margin: 10px 0;
+    }
+    .score-label {
+      text-align: center;
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 15px;
+    }
+    .param-bar {
+      width: 120px;
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .param-bar-fill {
+      height: 100%;
+      background: #4a90d9;
+      border-radius: 4px;
+    }
+    .bottom-tab {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      background: #fff;
+      border-top: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding-bottom: 8px;
+    }
+    .tab-item {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+      padding-top: 8px;
+    }
+    .tab-item.active {
+      color: #4a90d9;
+      font-weight: 600;
+    }
+    .tab-icon {
+      font-size: 22px;
+      margin-bottom: 2px;
+    }
+    .streak-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #fff3e0;
+      color: #e65100;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .content-item {
+      background: #fff;
+      border: 2px solid #e0e0e0;
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #555;
+    }
+    .content-item:hover {
+      border-color: #4a90d9;
+      color: #4a90d9;
+    }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 16px;
+    }
+    .toggle-switch {
+      width: 48px;
+      height: 28px;
+      background: #4a90d9;
+      border-radius: 14px;
+      position: relative;
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      background: #fff;
+      border-radius: 50%;
+      top: 2px;
+      right: 2px;
+    }
+    .summary-box {
+      background: #e8f4fd;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #333;
+    }
+    .hint-text {
+      font-size: 13px;
+      color: #888;
+      margin-top: 6px;
+    }
+    .arrow-down {
+      text-align: center;
+      padding: 12px;
+      font-size: 28px;
+      color: #e94560;
+    }
+    .loading-dots {
+      text-align: center;
+      font-size: 14px;
+      color: #888;
+      padding: 10px;
+    }
+    .chat-bubble-ai {
+      background: #e8f4fd;
+      border-radius: 16px 16px 16px 4px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      max-width: 85%;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #333;
+    }
+    .chat-bubble-user {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 16px 16px 4px 16px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      margin-left: auto;
+      max-width: 85%;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #333;
+    }
+    .play-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #4a90d9;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 0 10px;
+    }
+    .graph-placeholder {
+      height: 140px;
+      background: #f0f0f0;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🗣️ 발화 연습 앱 — Wireframe (Plain)</h1>
+  <p class="subtitle">Mobile: 375×667px | P0 화면 중심 | 큰 버튼 / 명확한 대비</p>
+
+  <!-- ============================================ -->
+  <!-- 1. 로그인 화면 -->
+  <!-- ============================================ -->
+  <div class="flow-label">① 로그인 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+      <div style="font-size:64px;margin-bottom:16px;">🗣️</div>
+      <div style="font-size:24px;font-weight:800;color:#1a1a2e;margin-bottom:8px;">발화 연습</div>
+      <div style="font-size:14px;color:#888;margin-bottom:40px;">AI와 함께하는 발화 훈련</div>
+
+      <div style="width:100%;padding:0 20px;">
+        <div style="background:#e8f4fd;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#4a90d9;">
+          ✓ 최근에 이걸로 로그인 했어요!
+        </div>
+        <button class="btn-primary">🔒 Google로 로그인</button>
+        
+        <button class="btn-secondary btn-p3">💬 Kakao로 로그인</button>
+        <button class="btn-secondary btn-p3">🟢 Naver로 로그인</button>
+        
+        <div style="margin-top:20px;font-size:14px;color:#666;">
+          <a href="#" style="color:#4a90d9;">일반 로그인</a> · <a href="#" style="color:#4a90d9;">회원가입</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ 자동 로그인 또는 로그인 완료</div>
+
+  <!-- ============================================ -->
+  <!-- 2. 메인 — 학습 탭 -->
+  <!-- ============================================ -->
+  <div class="flow-label">② 메인 — 학습 탭 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div style="font-size:20px;font-weight:700;">안녕하세요, 사용자님! 👋</div>
+          <div style="font-size:13px;color:#888;margin-top:4px;">오늘도 발화 연습을 시작해볼까요?</div>
+        </div>
+        <div class="streak-badge">🔥 3일째</div>
+      </div>
+
+      <div class="card" style="background:#4a90d9;color:#fff;border:none;">
+        <div style="font-size:14px;opacity:0.9;margin-bottom:6px;">✨ 오늘의 학습</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:12px;">프리스타일 대화 시작하기</div>
+        <button style="background:#fff;color:#4a90d9;border:none;padding:12px 20px;border-radius:10px;font-size:16px;font-weight:600;width:100%;">▶️ 시작하기</button>
+      </div>
+
+      <div class="section-title">컨텐츠 유형별 연습</div>
+      <div class="content-grid">
+        <div class="content-item">🎙️<br/>프리스타일<br/>토킹쇼</div>
+        <div class="content-item">✏️<br/>작문<br/>보조</div>
+        <div class="content-item">❓<br/>문제<br/>풀이</div>
+        <div class="content-item">💬<br/>주제<br/>발화</div>
+      </div>
+
+      <div class="bottom-tab">
+        <div class="tab-item active">
+          <div class="tab-icon">📚</div>
+          <div>학습</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">📊</div>
+          <div>대시보드</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">⚙️</div>
+          <div>설정</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ 컨텐츠 선택 후</div>
+
+  <!-- ============================================ -->
+  <!-- 3. AI 톡방 -->
+  <!-- ============================================ -->
+  <div class="flow-label">③ AI 톡방 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen" style="display:flex;flex-direction:column;">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <div style="font-size:20px;">←</div>
+        <div style="font-size:18px;font-weight:700;">프리스타일 토킹쇼</div>
+      </div>
+
+      <!-- 채팅 영역 -->
+      <div style="flex:1;overflow-y:auto;padding-bottom:10px;">
+        <div class="chat-bubble-ai">
+          안녕하세요! 오늘은 자유롭게 대화해볼까요? 먼저 주말에 뭐 했는지 이야기해보세요. 🌟
+        </div>
+
+        <div class="card" style="margin:12px 0;">
+          <div class="card-title">🎯 오늘의 문제</div>
+          <div class="card-text" style="font-size:17px;font-weight:600;">
+            "주말에 뭐 했어요?" 한 문장으로 말해보세요.
+          </div>
+          <div class="hint-text">💡 힌트: 사람, 장소, 활동 중 하나를 포함해보세요</div>
+        </div>
+      </div>
+
+      <!-- 하단 마이크 -->
+      <div style="text-align:center;padding:10px 0 20px;">
+        <div style="font-size:13px;color:#888;margin-bottom:10px;">버튼을 누르고 말해보세요</div>
+        <button class="mic-btn">🎤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ 녹음 버튼 클릭</div>
+
+  <!-- ============================================ -->
+  <!-- 4. 녹음 중 -->
+  <!-- ============================================ -->
+  <div class="flow-label">④ 녹음 중 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+      <div style="font-size:14px;color:#888;margin-bottom:20px;">🎙️ 녹음 중...</div>
+      
+      <div style="font-size:48px;font-weight:700;color:#4a90d9;margin-bottom:24px;">00:15</div>
+      
+      <div class="wave">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+      
+      <div style="font-size:14px;color:#888;margin:20px 0;">
+        할 말을 다 하셨으면 버튼을 눌러주세요
+      </div>
+      
+      <button class="stop-btn">⏹</button>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ 정지 → 서버 처리 중</div>
+
+  <!-- ============================================ -->
+  <!-- 5. 채점 결과 + AI 피드백 (병렬 결과 표시) -->
+  <!-- ============================================ -->
+  <div class="flow-label">⑤ 채점 결과 + AI 피드백 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen">
+      <!-- 상단 사용자 발화 표시 -->
+      <div class="chat-bubble-user" style="margin-bottom:16px;">
+        🗣️ "주말에 친구랑 공원에 가서 그리고 그리고 산책했어요"
+      </div>
+
+      <!-- 채점 결과 카드 -->
+      <div class="card" style="border-left:4px solid #4a90d9;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:700;color:#4a90d9;">📊 채점 결과</span>
+          <span class="badge badge-green">완료</span>
+        </div>
+        <div class="score-big">72</div>
+        <div class="score-label">100점 만점</div>
+        
+        <div style="margin-top:12px;">
+          <div class="param-row">
+            <span>문장 구성</span>
+            <div class="param-bar"><div class="param-bar-fill" style="width:80%;"></div></div>
+            <span style="font-weight:600;">80</span>
+          </div>
+          <div class="param-row">
+            <span>어휘 다양성</span>
+            <div class="param-bar"><div class="param-bar-fill" style="width:65%;"></div></div>
+            <span style="font-weight:600;">65</span>
+          </div>
+          <div class="param-row">
+            <span>유창성</span>
+            <div class="param-bar"><div class="param-bar-fill" style="width:75%;"></div></div>
+            <span style="font-weight:600;">75</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI 피드백 카드 -->
+      <div class="card" style="border-left:4px solid #2ecc71;">
+        <div style="font-size:13px;font-weight:700;color:#2ecc71;margin-bottom:8px;">💬 AI 피드백</div>
+        <div style="font-size:15px;line-height:1.7;color:#333;margin-bottom:12px;">
+          문장 구성은 좋았어요! 다만 <strong>"그리고"</strong>라는 접속사가 2번 반복되었어요. <br/>
+          다음에는 <strong>"그래서"</strong>나 <strong>"그리고 나서"</strong> 같은 다른 표현을 시도해보세요. 😊
+        </div>
+        
+        <div style="display:flex;gap:8px;">
+          <button class="play-btn">▶️ 음성으로 듣기</button>
+        </div>
+      </div>
+
+      <!-- 다음 문제 카드 -->
+      <div class="card" style="background:#fffbeb;border:2px solid #f59e0b;">
+        <div style="font-size:13px;color:#b45309;font-weight:600;margin-bottom:6px;">🎯 다음 문제</div>
+        <div style="font-size:17px;font-weight:700;color:#1a1a2e;">
+          산책하니까 기분이 어땠어요? 한 문장으로 말해보세요.
+        </div>
+        <div class="hint-text">💡 힌트: 기분, 날씨, 친구 중 하나를 포함해보세요</div>
+      </div>
+
+      <!-- 하단 마이크 (다음 턴) -->
+      <div style="text-align:center;padding:10px 0;">
+        <button class="mic-btn">🎤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ 5턴 완료 또는 "오늘은 여기까지"</div>
+
+  <!-- ============================================ -->
+  <!-- 6. 최종 보고서 -->
+  <!-- ============================================ -->
+  <div class="flow-label">⑥ 최종 보고서 <span>P0</span></div>
+  <div class="phone-frame">
+    <div class="screen">
+      <div class="screen-header" style="text-align:center;">📋 오늘의 연습 보고서</div>
+      
+      <div style="text-align:center;margin:20px 0;">
+        <div style="font-size:14px;color:#888;margin-bottom:8px;">종합 점수</div>
+        <div class="score-big">72</div>
+        <div style="font-size:14px;color:#4a90d9;font-weight:600;">잘하고 있어요! 👏</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📊 세부 역량</div>
+        <div class="param-row">
+          <span>문장 구성</span>
+          <div class="param-bar"><div class="param-bar-fill" style="width:80%;"></div></div>
+          <span style="font-weight:600;">80</span>
+        </div>
+        <div class="param-row">
+          <span>어휘 다양성</span>
+          <div class="param-bar"><div class="param-bar-fill" style="width:65%;"></div></div>
+          <span style="font-weight:600;">65</span>
+        </div>
+        <div class="param-row">
+          <span>유창성</span>
+          <div class="param-bar"><div class="param-bar-fill" style="width:75%;"></div></div>
+          <span style="font-weight:600;">75</span>
+        </div>
+        <div class="param-row">
+          <span>접속사 반복 개선</span>
+          <div class="param-bar"><div class="param-bar-fill" style="width:60%;"></div></div>
+          <span style="font-weight:600;">60</span>
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <strong>📝 요약</strong><br/>
+        주말 활동에 대해 대화를 진행했어요. 문장 구성은 좋았으나 "그리고"라는 접속사가 반복적으로 사용되었어요. 
+        다음 연습에서는 다양한 접속사를 활용해보세요. 전반적으로 유창하게 발화하고 있어요!
+      </div>
+
+      <button class="btn-primary" style="margin-top:20px;">🏠 홈으로 돌아가기</button>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ Bottom Tab: 대시보드</div>
+
+  <!-- ============================================ -->
+  <!-- 7. 대시보드 탭 -->
+  <!-- ============================================ -->
+  <div class="flow-label">⑦ 대시보드 탭 <span class="badge">P1</span></div>
+  <div class="phone-frame">
+    <div class="screen">
+      <div class="screen-header">📊 나의 학습 기록</div>
+
+      <div class="card">
+        <div class="card-title">📈 날짜별 점수 추이</div>
+        <div class="graph-placeholder">꺾은선 그래프 영역</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#888;">
+          <span>8/12</span>
+          <span>8/14</span>
+          <span>8/16</span>
+          <span>8/17</span>
+        </div>
+      </div>
+
+      <div class="card" style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:40px;">🔥</div>
+        <div>
+          <div style="font-size:16px;font-weight:700;">연속 학습 3일째</div>
+          <div style="font-size:13px;color:#888;">꾸준함이 실력을 만듭니다!</div>
+        </div>
+      </div>
+
+      <div class="section-title">최근 학습 이력</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:14px;font-weight:600;">프리스타일 토킹쇼</div>
+            <div style="font-size:12px;color:#888;">8월 17일 · 5턴</div>
+          </div>
+          <div style="font-size:20px;font-weight:700;color:#4a90d9;">72점</div>
+        </div>
+      </div>
+
+      <div class="bottom-tab">
+        <div class="tab-item">
+          <div class="tab-icon">📚</div>
+          <div>학습</div>
+        </div>
+        <div class="tab-item active">
+          <div class="tab-icon">📊</div>
+          <div>대시보드</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">⚙️</div>
+          <div>설정</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">⬇ Bottom Tab: 설정</div>
+
+  <!-- ============================================ -->
+  <!-- 8. 설정 탭 -->
+  <!-- ============================================ -->
+  <div class="flow-label">⑧ 설정 탭 <span class="badge">P1</span></div>
+  <div class="phone-frame">
+    <div class="screen">
+      <div class="screen-header">⚙️ 설정</div>
+
+      <div class="section-title">알림</div>
+      <div class="toggle-row">
+        <span>🔔 푸시 알림</span>
+        <div class="toggle-switch"></div>
+      </div>
+      <div class="toggle-row">
+        <span>⏰ 일일 학습 리마인더</span>
+        <div style="font-size:14px;color:#888;">09:00</div>
+      </div>
+
+      <div class="section-title">지원</div>
+      <div class="toggle-row" style="cursor:pointer;">
+        <span>💬 고객센터 / 문의</span>
+        <span style="color:#888;">></span>
+      </div>
+
+      <div class="section-title">계정 <span class="badge" style="background:#eee;color:#999;">P3</span></div>
+      <div class="toggle-row btn-p3" style="cursor:pointer;">
+        <span>🔤 폰트 크기</span>
+        <span style="color:#888;">보통 ></span>
+      </div>
+      <div class="toggle-row btn-p3" style="cursor:pointer;">
+        <span>🎨 색약 모드</span>
+        <div class="toggle-switch" style="background:#ddd;"></div>
+      </div>
+
+      <button class="btn-secondary" style="margin-top:30px;color:#e94560;border-color:#ffcdd2;">🚪 로그아웃</button>
+
+      <div class="bottom-tab">
+        <div class="tab-item">
+          <div class="tab-icon">📚</div>
+          <div>학습</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">📊</div>
+          <div>대시보드</div>
+        </div>
+        <div class="tab-item active">
+          <div class="tab-icon">⚙️</div>
+          <div>설정</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- 푸터 -->
+  <!-- ============================================ -->
+  <div style="text-align:center;padding:40px 20px;color:#888;font-size:13px;">
+    <p>🔴 P0 = Must Have · 🟡 P1 = Should Have · 🟢 P3 = Nice to Have</p>
+    <p style="margin-top:8px;">왼쪽 선 강조 = 채점(파랑) / 피드백(초록) / 다음문제(주황)</p>
+    <p style="margin-top:8px;">© 2026 SeSAC Team Project · Wireframe v0.1</p>
+  </div>
+
+</body>
+</html>
