@@ -8,6 +8,7 @@
 - **WebSocket API**: AI 대화 세션의 실시간 양방향 통신
 - **인증**: **Firebase Authentication (Google OAuth2)**. Spring Boot에서 Firebase Admin SDK로 ID Token 검증
 - **데이터 형식**: JSON (UTF-8)
+- **JSON 네이밍 컨벤션**: 응답은 **camelCase** (Jackson 기본 동작). 요청 DTO는 예외적으로 snake_case 일부 유지 (예: `FirebaseAuthRequest.id_token`). 상세는 `API_SPEC.md v1.1` 참고.
 - **문서 형식**: md + mermaid (OpenAPI 3.0 마이그레이션은 추후)
 
 ---
@@ -70,7 +71,9 @@
 
 ---
 
-## 3. 인증 API (REST)
+## 3. 인증 API (REST) — ✅ 구현 완료
+
+> **📌 구현 상태:** Firebase Auth + JWT 인증 시스템 구현 완료. POST /auth/firebase, POST /auth/refresh, POST /auth/logout 3개 엔드포인트 모두 구현됨.
 
 ### 3.1 Firebase 로그인 (Google OAuth2)
 
@@ -147,7 +150,13 @@
 
 ---
 
-## 4. 사용자 API (REST)
+## 4. 사용자 API (REST) — ✅ 구현 완료
+
+> **📌 구현 상태:** GET /users/me, PATCH /users/me, DELETE /users/me, POST /users/me/profile-image, GET /users/me/profile-image 모두 구현 완료. 유저 수준 조회(GET /users/me/level)는 미구현.
+>
+> ℹ️ **회원탈퇴 (2026-08-30 신규 구현):** `DELETE /api/v1/users/me` — DB hard delete + 서버에서 Admin SDK로 Firebase Auth 유저 삭제 (afterCommit). 클라이언트는 Firebase `.delete()` + 로컬 토큰 삭제.
+>
+> ℹ️ **프로필 사진 (2026-08-30 신규 구현):** POST/GET `/api/v1/users/me/profile-image` — OCI Object Storage 연동. 백엔드 프록시 스트리밍(GET, JWT 인증). 버킷 비공개 유지.
 
 ### 4.1 내 프로필 조회
 
@@ -191,7 +200,23 @@
 
 > **⚠️ 민감정보(성별, 나이, 직업, 관심사, 수술/질병)**는 P4 기능이므로 프로토타입에서는 수정 API에서 제외하거나 무시. 프론트에서도 입력 폼 미노출.
 
-### 4.3 프로필 이미지 업로드
+### 4.2.1 회원탈퇴 — ✅ 구현 완료 (2026-08-30)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `DELETE` |
+| **Path** | `/api/v1/users/me` |
+| **인증** | Bearer JWT |
+
+#### 응답
+
+```
+HTTP 204 No Content
+```
+
+> **구현 상세:** 서버에서 DB hard delete (AppUser, UserProfile 삭제) 후 `afterCommit`으로 Firebase Auth 유저도 삭제 (firebase_uid 기준, Admin SDK). 클라이언트는 Firebase `.delete()` + 로컬 토큰 삭제 후 로그인 화면으로 이동.
+
+### 4.3 프로필 이미지 업로드 — ✅ 구현 완료 (2026-08-30)
 
 | 항목 | 내용 |
 |------|------|
@@ -216,6 +241,24 @@
   }
 }
 ```
+
+### 4.3.1 프로필 이미지 조회 — ✅ 구현 완료 (2026-08-30)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/users/me/profile-image` |
+| **인증** | Bearer JWT |
+
+#### 응답
+
+```
+HTTP 200 OK
+Content-Type: image/* (원본 파일의 Content-Type)
+Body: <이미지 바이너리 스트림>
+```
+
+> **구현 상세:** 백엔드 프록시 스트리밍 방식. OCI Object Storage 버킷은 비공개 유지, JWT 인증 후 서버가 버킷에서 스트림. 클라이언트는 Coil 등 이미지 로딩 라이브러리로 표시. 캐시 무효화는 URL에 `?v=` 쿼리 파라미터 사용.
 
 ### 4.4 유저 수준 조회 (대시보드)
 
@@ -440,6 +483,152 @@
   }
 }
 ```
+
+---
+
+## 5.6 컨텐츠 리소스 API (REST) — 🆕 신규 추가
+
+> **📌 신규 엔드포인트:** IMAGE_RESOURCE, IMAGE_TAG, IMAGE_HINT 테이블 기반 이미지 리소스 관리 API. 관리자(admin) 권한이 필요한 등록/수정/삭제 API와 일반 사용자를 위한 조회 API로 분리된다.
+
+### 5.6.1 이미지 리소스 목록 조회
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/content/images` |
+| **인증** | Bearer JWT |
+| **Query Params** | `problem_type` (DESCRIBE/GUESS, optional), `page`, `size` |
+
+#### 응답
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "image_id": 1,
+        "image_name": "park_scene_01.jpg",
+        "bucket_path": "content/park_scene_01.jpg",
+        "image_url": "https://objectstorage.oraclecloud.com/.../content/park_scene_01.jpg",
+        "problem_type": "DESCRIBE",
+        "tags": ["공원", "나무", "벤치"],
+        "hints": [
+          {"hint_type": "CHOSUNG", "hint_text": "ㄱ-ㅇ"},
+          {"hint_type": "ASSOCIATION", "hint_text": "사람들이 쉬는 곳"}
+        ]
+      }
+    ],
+    "total_elements": 50,
+    "total_pages": 5,
+    "current_page": 0
+  }
+}
+```
+
+### 5.6.2 이미지 리소스 상세 조회
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/content/images/{image_id}` |
+| **인증** | Bearer JWT |
+
+#### 응답
+
+```json
+{
+  "success": true,
+  "data": {
+    "image_id": 1,
+    "image_name": "park_scene_01.jpg",
+    "bucket_path": "content/park_scene_01.jpg",
+    "image_url": "https://objectstorage.oraclecloud.com/.../content/park_scene_01.jpg",
+    "problem_type": "DESCRIBE",
+    "tags": [
+      {"tag_id": 1, "tag_text": "공원"},
+      {"tag_id": 2, "tag_text": "나무"},
+      {"tag_id": 3, "tag_text": "벤치"}
+    ],
+    "hints": [
+      {"hint_id": 1, "hint_type": "CHOSUNG", "hint_text": "ㄱ-ㅇ"},
+      {"hint_id": 2, "hint_type": "ASSOCIATION", "hint_text": "사람들이 쉬는 곳"}
+    ],
+    "created_at": "2026-08-25T10:00:00Z"
+  }
+}
+```
+
+### 5.6.3 이미지 리소스 등록 (관리자 전용)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `POST` |
+| **Path** | `/api/v1/admin/content/images` |
+| **인증** | Bearer JWT (admin 권한) |
+| **Content-Type** | `multipart/form-data` |
+
+#### 요청
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `image` | File | 이미지 파일 (JPG/PNG, 최대 10MB) |
+| `image_name` | String | 이미지 명칭 |
+| `problem_type` | String | `DESCRIBE` 또는 `GUESS` |
+| `tags` | String (JSON) | 태그 배열 (예: `["공원", "나무"]`) |
+| `hints` | String (JSON) | 힌트 배열 (예: `[{"hint_type":"CHOSUNG","hint_text":"ㄱ-ㅇ"}]`) |
+
+#### 응답
+
+```json
+{
+  "success": true,
+  "data": {
+    "image_id": 51,
+    "image_name": "new_image.jpg",
+    "bucket_path": "content/new_image.jpg",
+    "problem_type": "GUESS"
+  }
+}
+```
+
+### 5.6.4 이미지 리소스 수정 (관리자 전용)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `PATCH` |
+| **Path** | `/api/v1/admin/content/images/{image_id}` |
+| **인증** | Bearer JWT (admin 권한) |
+
+#### 요청
+
+```json
+{
+  "image_name": "수정된_이미지명.jpg",
+  "problem_type": "DESCRIBE"
+}
+```
+
+### 5.6.5 이미지 리소스 삭제 (관리자 전용)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `DELETE` |
+| **Path** | `/api/v1/admin/content/images/{image_id}` |
+| **인증** | Bearer JWT (admin 권한) |
+
+> 이미지 삭제 시 연결된 IMAGE_TAG, IMAGE_HINT 레코드도 함께 삭제된다 (CASCADE). Object Storage의 실제 파일은 별도 lifecycle 정책에 따라 관리된다.
+
+### 5.6.6 태그/힌트 개별 관리 (관리자 전용)
+
+| 항목 | 내용 |
+|------|------|
+| **Method** | `POST` / `PATCH` / `DELETE` |
+| **Path** | `/api/v1/admin/content/images/{image_id}/tags` |
+| **Path** | `/api/v1/admin/content/images/{image_id}/hints` |
+| **인증** | Bearer JWT (admin 권한) |
+
+> 기존 이미지 리소스에 태그나 힌트를 추가/수정/삭제할 수 있는 엔드포인트.
 
 ---
 
@@ -741,12 +930,14 @@ stateDiagram-v2
 ```mermaid
 graph LR
     subgraph REST
-        R1[POST /auth/firebase]
-        R2[POST /auth/refresh]
-        R3[POST /auth/logout]
-        R4[GET /users/me]
-        R5[PATCH /users/me]
-        R6[POST /users/me/profile-image]
+        R1[POST /auth/firebase ✅]
+        R2[POST /auth/refresh ✅]
+        R3[POST /auth/logout ✅]
+        R4[GET /users/me ✅]
+        R5[PATCH /users/me ✅]
+        R5b["DELETE /users/me ✅ 🆕"]
+        R6["POST /users/me/profile-image ✅ 🆕"]
+        R6b["GET /users/me/profile-image ✅ 🆕"]
         R7[GET /users/me/level]
         R8[GET /content-types]
         R9[GET /sessions]
@@ -757,6 +948,11 @@ graph LR
         R14[GET /dashboard]
         R15[GET /settings/notifications]
         R16[PATCH /settings/notifications]
+        R17["GET /content/images 🆕"]
+        R18["GET /content/images/{id} 🆕"]
+        R19["POST /admin/content/images 🆕"]
+        R20["PATCH /admin/content/images/{id} 🆕"]
+        R21["DELETE /admin/content/images/{id} 🆕"]
     end
 
     subgraph WebSocket
@@ -774,11 +970,14 @@ graph LR
     end
 ```
 
+> ✅ = 구현 완료, 🆕 = 신규 추가
+
 | 카테고리 | 엔드포인트 수 | 설명 |
 |----------|-------------|------|
-| 인증 | 3 | Firebase 로그인, 토큰 갱신, 로그아웃 |
-| 사용자 | 4 | 프로필 조회/수정, 이미지 업로드, 수준 조회 |
+| 인증 | 3 | Firebase 로그인, 토큰 갱신, 로그아웃 — ✅ 구현 완료 |
+| 사용자 | 6 | 프로필 조회/수정/삭제 ✅, 프로필 이미지 업로드/조회 ✅, 수준 조회 |
 | 학습/대시보드 | 5 | 컨텐츠 유형, 세션 목록/상세, 보고서, 대시보드 |
+| 컨텐츠 리소스 | 5 | 이미지 리소스 조회/등록/수정/삭제, 태그/힌트 관리 — 🆕 신규 |
 | 음성 | 2 | 업로드, 녹음 URL |
 | 설정 | 2 | 알림 조회/수정 |
 | **WebSocket** | **1 연결 + 7 이벤트** | AI 대화 실시간 통신 |
@@ -791,3 +990,5 @@ graph LR
 |------|------|--------|-----------|
 | v0.1 | 2026-08-18 | 김윤혁 | 초안 작성 |
 | v0.2 | 2026-08-19 | 김윤혁 | 인증: JWT → Firebase Auth. `/conversations` → `/sessions` URL 변경. 컨텐츠 유형 4개→3개(A/B/C). WebSocket 이벤트: SCORING_READY+LLM_READY → TURN_RESULT 통합. 5개 평가지표 반영. 세션 상세(턴별), 대시보드, 유저 수준 API 신규 추가. 음성 녹음 30초 제한. 종합보고서 일일 제한 에러 코드 추가. |
+| v0.3 | 2026-08-26 | - | 인증 API 구현 완료 표시(✅). 사용자 API 부분 구현 표시(GET/PATCH /users/me 완료). 컨텐츠 리소스 API 신규 추가: 이미지 리소스 조회/등록/수정/삭제 + 태그/힌트 관리 엔드포인트(admin 전용). API 요약 다이어그램에 구현 상태 표시 추가. |
+| v0.4 | 2026-08-30 | - | **"DB 기반 로그인 구현" 완료 반영.** 회원탈퇴 API(DELETE /users/me) 신규 구현 표시. 프로필 이미지 업로드(POST /users/me/profile-image) + 조회(GET /users/me/profile-image) 구현 완료 표시. §4 사용자 API를 "부분 구현" → "구현 완료"로 변경. JSON 네이밍 컨벤션 노트 추가(응답 camelCase, 요청 DTO 일부 snake_case 예외). API 요약 다이어그램에 DELETE /users/me, POST/GET profile-image ✅ 표시. 사용자 API 엔드포인트 수 4→6 변경. API_SPEC.md v1.1 참고 노트 추가. |

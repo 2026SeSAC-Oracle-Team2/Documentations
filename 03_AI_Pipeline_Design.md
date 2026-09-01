@@ -10,6 +10,11 @@
 - **TTS**: OpenAI TTS (tts-1, LLM 컨테이너 내부 호출)
 - **실행 방식**: Spring Boot가 LLM 컨테이너 호출 → LLM 컨테이너 내부에서 STT→채점→LLM→TTS 순차 처리 → Spring Boot가 결과 취합 후 WebSocket으로 푸시
 
+> **📌 리포지토리 구조:** AI 컨테이너는 각각 별도 GitHub 리포지토리로 관리된다.
+> - `SeSAC_llm_container` — LLM 컨테이너 (STT + LLM + TTS 통합, Python/FastAPI)
+> - `SeSAC_scoring_container` — 채점 컨테이너 (Python/FastAPI)
+> - `SeSAC_deployment` — Docker Compose 오케스트레이션 (두 컨테이너를 포함한 전체 서비스 정의)
+
 ---
 
 ## 2. 전체 파이프라인 흐름
@@ -559,3 +564,4 @@ sequenceDiagram
 | v0.1 | 2026-08-18 | 김윤혁 | 초안 작성 |
 | v0.2 | 2026-08-18 | 김윤혁 | scoring-container 포트 8001로 통일. 음성 업로드 REST-first로 통일. TTS 한국어 품질 리스크 P0 승격. |
 | v0.3 | 2026-08-19 | 김윤혁 | 컨테이너 구조 변경: conversation-llm+Whisper+TTS → **llm-container(통합)**. Spring Boot의 AI 진입점 유일화. 세션 종합 보고서 흐름 추가. 5개 평가지표 반영. 컨텐츠 3개(A/B/C) 반영. 녹음 30초 제한 추가. WebSocket 이벤트 통합(TURN_RESULT). |
+| v0.4 | 2026-08-26 | - | 리포지토리 분리 반영: `SeSAC_llm_container`, `SeSAC_scoring_container` 별도 리포지토리 명시. `SeSAC_deployment` 오케스트레이션 리포지토리 참조 추가. |

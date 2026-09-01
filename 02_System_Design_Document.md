@@ -12,6 +12,17 @@
 - 음성 대화 흐름: **WebSocket** 기반 실시간 양방향 통신
 - 비동기 처리: **Spring `@Async` 내부 스레드 풀**
 
+> **📌 리포지토리 구조:** 각 컨테이너/서비스는 별도의 GitHub 리포지토리로 관리된다. 전체 오케스트레이션은 `SeSAC_deployment` 리포지토리의 `docker-compose.yml`로 통합 관리한다.
+
+| 리포지토리 | 기술 스택 | 설명 |
+|-----------|----------|------|
+| `SeSAC_SpeechApp_Backend` | Kotlin / Spring Boot 3.x | 모놀리틱 API 서버 |
+| `SeSAC_SpeechApp_Frontend` | Kotlin (Android) | Android 클라이언트 앱 |
+| `SeSAC_db_container` | Oracle XE (Docker) | 데이터베이스 컨테이너 정의 |
+| `SeSAC_llm_container` | Python / FastAPI | LLM 컨테이너 (STT + LLM + TTS) |
+| `SeSAC_scoring_container` | Python / FastAPI | 발화 채점 컨테이너 |
+| `SeSAC_deployment` | Docker Compose | 전체 서비스 오케스트레이션 (NEW) |
+
 ---
 
 ## 2. 시스템 아키텍처 개요
@@ -39,7 +50,8 @@ graph TB
     end
 
     subgraph OCI_Object[OCI Object Storage]
-        O[버킷: voice-records<br/>MP3/WAV 파일 / 프로필 사진]
+        O1[버킷: user-files<br/>음성 파일 / 프로필 사진]
+        O2[버킷: content-files<br/>이미지 리소스]
     end
 
     subgraph External_AI[외부 AI 서비스]
@@ -53,7 +65,8 @@ graph TB
     A -->|HTTPS / WSS| N
     N -->|HTTP| S
     S -->|JDBC| D
-    S -->|HTTPS| O
+    S -->|HTTPS| O1
+    S -->|HTTPS| O2
     S -->|HTTP| LLM
     S -->|HTTP| SC
     LLM -->|HTTP| SC
@@ -62,9 +75,37 @@ graph TB
     LLM -->|HTTPS REST| G
 ```
 
-> **참고:** AI 컨테이너(`llm-container`, `scoring-container`)는 동일 OCI VM의 Docker Compose에 포함되어 운영된다. 추후 로드 증가로 VM 분리가 필요한 경우, Compose 파일만 별도 VM으로 이전하면 된다.
+> **참고:** AI 컨테이너(`llm-container`, `scoring-container`)는 동일 OCI VM의 Docker Compose에 포함되어 운영된다. 각 컨테이너는 별도 GitHub 리포지토리(`SeSAC_llm_container`, `SeSAC_scoring_container`)에서 관리되며, `SeSAC_deployment` 리포지토리의 `docker-compose.yml`로 통합 배포된다. 추후 로드 증가로 VM 분리가 필요한 경우, Compose 파일만 별도 VM으로 이전하면 된다.
 
-### 2.2 통신 방식 요약
+### 2.2 배포 구조 (SeSAC_deployment)
+
+`SeSAC_deployment` 리포지토리는 전체 서비스의 오케스트레이션을 담당한다.
+
+```mermaid
+graph LR
+    subgraph SeSAC_deployment
+        DC[docker-compose.yml]
+        ENV[.env.template]
+        NGINX[nginx.conf]
+    end
+
+    subgraph Repos[각 리포지토리]
+        R1[SeSAC_db_container]
+        R2[SeSAC_SpeechApp_Backend]
+        R3[SeSAC_llm_container]
+        R4[SeSAC_scoring_container]
+        R5[SeSAC_SpeechApp_Frontend]
+    end
+
+    DC -->|참조| R1
+    DC -->|참조| R2
+    DC -->|참조| R3
+    DC -->|참조| R4
+```
+
+> **배포 방법:** VM에서 모든 리포지토리를 클론한 후, `SeSAC_deployment` 디렉토리에서 `docker compose up` 실행. 현재 Oracle DB 서비스만 활성화되어 있으며, 나머지 서비스는 placeholder 주석으로 표시되어 있다.
+
+### 2.3 통신 방식 요약
 
 | 구간 | 프로토콜 | 용도 |
 |------|---------|------|
@@ -187,10 +228,13 @@ class AiService {
 
 ### 3.5 Docker Compose 구성
 
+> **📌 주의:** 아래 `docker-compose.yml`은 `SeSAC_deployment` 리포지토리에서 관리된다. 각 서비스의 이미지는 해당 리포지토리에서 빌드된다. 현재 Oracle DB 서비스만 활성화되어 있으며, 나머지는 placeholder 주석으로 표시되어 있다.
+
 ```yaml
-# docker-compose.yml (OCI VM 내 배포)
+# SeSAC_deployment/docker-compose.yml (OCI VM 내 배포)
 services:
   oracle-db:
+    # SeSAC_db_container 리포지토리의 설정 사용
     image: gvenzl/oracle-xe:21-slim
     container_name: oracle-xe
     environment:
@@ -280,14 +324,19 @@ networks:
 
 ### 3.6 Object Storage (OCI Bucket)
 
+> **📌 아키텍처 원칙:** Object Storage 관련 OCI SDK 통합은 **Backend(Spring Boot)**에서 담당한다. 데이터베이스에는 메타데이터(`bucket_path` 문자열)만 저장하며, 실제 파일은 Object Storage에 보관한다.
+
 | 항목 | 내용 |
 |------|------|
-| **버킷 이름** | `speech-app-voices` |
-| **저장 대상** | 음성 녹음 파일, 프로필 사진 |
+| **버킷 구성** | 2개 버킷 (또는 1개 버킷 + prefix 분리) |
+| **버킷 1** | `speech-app-user-files` — 음성 녹음 파일, 프로필 사진 |
+| **버킷 2** | `speech-app-content-files` — 이미지 리소스 (IMAGE_RESOURCE) |
+| **DB 저장** | 메타데이터만 저장 (`bucket_path` 문자열). 실제 파일은 Object Storage에 보관 |
 | **접근 제어** | Pre-Authenticated URL (PAR) 또는 임시 서명 URL 생성 |
 | **음성 파일 명명** | `{user-uuid}/{session-id}/{turn-number}.mp3` |
 | **프로필 사진 명명** | `{user-uuid}/profile/{timestamp}.jpg` |
-| **수명 주기** | 음성 파일: 30일 후 자동 삭제 (Lifecycle Rule). 프로필 사진: 무제한 |
+| **이미지 리소스 명명** | `content/{image_name}` |
+| **수명 주기** | 음성 파일: 30일 후 자동 삭제 (Lifecycle Rule). 프로필 사진/이미지 리소스: 무제한 |
 | **암호화** | OCI 기본 서버 측 암호화 (AES-256) |
 
 ---
@@ -446,3 +495,4 @@ sequenceDiagram
 | v0.2 | 2026-08-18 | - | VM 사양 2 OCPU/8GB → 4 OCPU/16GB 변경. AI 컨테이너 2개(`scoring-container`, `conversation-llm`) 추가. STT: Azure → OpenAI Whisper API. TTS: OpenAI TTS(tts-1) 추가. |
 | v0.3 | 2026-08-18 | 김윤혁 | scoring-container 포트 8001로 통일. 음성 업로드 방식 REST-first로 통일. 비용 산정 통일. |
 | v0.4 | 2026-08-19 | 김윤혁 | 컨테이너 구조 변경: conversation-llm+Whisper+TTS → **llm-container(통합)**. 인증: Spring OAuth2 → **Firebase Auth**. AI 흐름: Spring이 LLM+채점 각각 호출 → **LLM 컨테이너가 STT 후 채점 컨테이너로 직접 전달**, Spring이 결과 취합. 세션 종합 채점 흐름 추가. Object Storage에 프로필 사진 저장 추가. |
+| v0.5 | 2026-08-26 | - | 리포지토리 분리 반영: 각 컨테이너별 별도 GitHub 리포지토리 구조. `SeSAC_deployment` 오케스트레이션 리포지토리 추가. Object Storage 2버킷 분리(user-files/content-files) 및 DB 메타데이터 저장 원칙 명시. Backend OCI SDK 통합 명시. |
