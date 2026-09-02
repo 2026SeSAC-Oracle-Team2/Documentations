@@ -3,16 +3,18 @@
 ## 1. 목적 및 범위
 
 ### 1.1 목적
-본 문서는 "AI 기반 발화 연습·대화형 에이전트 앱"의 소프트웨어 요구사항을 정의한다. 발화에 어려움을 겪는 실어증 환자를 대상으로 하며, AI와의 음성 대화를 통해 발화 훈련 및 피드백을 제공하는 것을 목표로 한다.
+본 문서는 "AI 기반 **발화 연습 문제풀이 앱**"(덕담)의 소프트웨어 요구사항을 정의한다. 발화에 어려움을 겪는 실어증 환자를 대상으로 하며, AI가 출제하는 발화 문제에 답안(음성/선택)을 제출하고, 평가지표별 채점·피드백을 제공하는 것을 목표로 한다.
+
+> ⚠️ **2026-08-31 기획 전환 (ADR-001):** "대화형 에이전트" → **"문제풀이 앱"** (마이크로 답안 제출). 세션/턴 구조와 타입별 상호작용은 `06_Session_Flow_Spec.md` (단일 진실 원천) 참고.
 
 ### 1.2 범위
 - Android 단일 플랫폼 (Google Play 대상)
 - 클라이언트: Kotlin Native (Android Studio)
 - 백엔드: OCI (Oracle Cloud Infrastructure) 직접 구축 — **Oracle이 제공한 Tenancy 사용, Always Free 미사용**
 - 인증: **Firebase Authentication (Google OAuth2)**
-- AI 파이프라인: OpenAI Whisper API (STT, LLM 컨테이너 내부 처리), OpenAI TTS (tts-1), 발화 채점 컨테이너, 대화 진행 LLM 컨테이너. 구체적인 내부 구현 방식은 시스템 설계서/AI 파이프라인 문서에서 TBD로 정의.
+- AI: **통합 AI 컨테이너 (FastAPI)** — 문제 출제 / STT(로컬 Whisper) / LLM(Ollama Cloud) / TTS(로컬 Qwen) / 채점 / 리포트 전담 (ADR-002). 계약: `03_AI_Container_Contract.md`
 - **DB: 백엔드 인스턴스 내 컨테이너로 Oracle DB 직접 구축 (OCI ADB 미사용)**
-- **파일 저장: OCI Object Storage (음성 파일, 프로필 사진)**
+- **파일 저장: OCI Object Storage (음성 파일, 프로필 사진, 이미지·태그)**
 
 ### 1.3 우선순위 정의
 - **P0 (Must Have):** 없으면 데모 불가능한 핵심 기능
@@ -503,4 +505,4 @@ Note over LLM,SCORE: 컨테이너
 | v0.1 | 2026-08-18 | 김윤혁 | 초안 작성 |
 | v0.2 | 2026-08-19 | 김윤혁 | 회의 결정 반영: 컨테이너 구조 변경(LLM+채점 2개), 필수/민감정보 분리(P1/P4), 유저 수준 시스템 추가, 컨텐츠 3개 축소(A/B/C), Firebase Auth + OCI Object Storage 추가, 제약조건 교체(팀→프로젝트), 녹음 30초 제한, 이전 학습 기록 추가, 종합보고서 일일 제한 추가 |
 | v0.3 | 2026-08-19 | 김윤혁 | 발표일 9/4 → 9/10 수정. User Story & Use Case 섹션(4장) 신규 추가. 외부 인터페이스 요구사항(6장)에 Firebase 토큰 검증 항목 추가. |
-| v0.4 | 2026-08-31 | Hermes (Agent) | **기획 전환 반영 (문서 재설계 v0.5 동기):** 앱 재정의 — "AI 대화형 에이전트" → "문제풀이 앱"(마이크로 답안 제출, AI TTS 진행 유지). §3.3 컨텐츠 유형 확정: 구 A/B/C 3종(TBD) → 5종 확정 (LISTEN 알아듣기/NAMING 이름대기/SHADOWING 따라말하기/SELF_TALK 스스로말하기/STORYTELLING 이야기하기 — A 4종은 채점 컨테이너로 점수 산정, B는 무채점). 세션 구성 확정: 오늘의 학습 = A 4종×2회 무작위 → 이야기하기 N턴, 학습 테마(카페/병원 등) 기반. NAMING 답변 형태 확정(말로 답변, 단서 의미→음운 각 1개). 사용자 발화 지표 3종(syllables/response_time/articulation_rate) 요구사항 신설 — STORYTELLING 포함 전 사용자 음성 기록(개인 평균 산정 재료). SELF_TALK/STORYTELLING은 임시 번호 FR-030a/b 부여 — 추후 일괄 재번호 예정 |
+| v0.4 | 2026-08-31 | 김윤혁 | **기획 전환 반영 (문서 재설계 v0.5 동기):** 앱 재정의 — "AI 대화형 에이전트" → "문제풀이 앱"(마이크로 답안 제출, AI TTS 진행 유지). §3.3 컨텐츠 유형 확정: 구 A/B/C 3종(TBD) → 5종 확정 (LISTEN 알아듣기/NAMING 이름대기/SHADOWING 따라말하기/SELF_TALK 스스로말하기/STORYTELLING 이야기하기 — A 4종은 채점 컨테이너로 점수 산정, B는 무채점). 세션 구성 확정: 오늘의 학습 = A 4종×2회 무작위 → 이야기하기 N턴, 학습 테마(카페/병원 등) 기반. NAMING 답변 형태 확정(말로 답변, 단서 의미→음운 각 1개). 사용자 발화 지표 3종(syllables/response_time/articulation_rate) 요구사항 신설 — STORYTELLING 포함 전 사용자 음성 기록(개인 평균 산정 재료). SELF_TALK/STORYTELLING은 임시 번호 FR-030a/b 부여 — 추후 일괄 재번호 예정 |
