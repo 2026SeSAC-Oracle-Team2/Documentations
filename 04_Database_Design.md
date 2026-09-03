@@ -11,7 +11,7 @@
 
 | 스키마 | 도메인 | 테이블 |
 |--------|--------|--------|
-| `SPEECHAPP_USER` | 사용자 + 학습 | APP_USER, USER_PROFILE, CONTENT_TYPE, LEARNING_SESSION, TURN, TURN_IMAGE, VOICE_RECORD |
+| `SPEECHAPP_USER` | 사용자 + 학습 | APP_USER, USER_PROFILE, **TAGS, USER_PROFILE_TAGS**(v2.2), CONTENT_TYPE, LEARNING_SESSION, TURN, TURN_IMAGE, VOICE_RECORD |
 | `SPEECHAPP_CONTENT` | 콘텐츠 | IMAGE_RESOURCE, IMAGE_THEMA |
 
 ## 2. DB 사용자 계정
@@ -29,7 +29,8 @@
 
 ```
 SPEECHAPP_USER
-  APP_USER (id PK) 1──1 USER_PROFILE (user_id FK, UNIQUE)
+  APP_USER (id PK) 1──1 USER_PROFILE (user_id FK, UNIQUE: profile_image/nickname/hobbies/sex/birth_date/user_memory)
+  APP_USER 1──N USER_PROFILE_TAGS N──1 TAGS (관심사 태그, 최대 5개/유저)
   APP_USER 1──N LEARNING_SESSION (user_id FK)
   LEARNING_SESSION 1──N TURN (session_id FK)
   TURN N──N IMAGE_RESOURCE ← TURN_IMAGE (turn_id+image_id 복합 PK)
@@ -56,7 +57,7 @@ SPEECHAPP_CONTENT
 | `SOCIAL_ID` | VARCHAR2(255) | | |
 | `CREATED_AT` / `UPDATED_AT` | TIMESTAMP | NOT NULL | |
 
-### 4.2 USER_PROFILE (사용자 프로필)
+### 4.2 USER_PROFILE (사용자 프로필) — v2.2 가입 플로우 개편
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -64,12 +65,24 @@ SPEECHAPP_CONTENT
 | `USER_ID` | NUMBER(19) | NOT NULL, UNIQUE, FK→app_user | |
 | `NICKNAME` | VARCHAR2(50) | | |
 | `PROFILE_IMAGE_BUCKET_PATH` | VARCHAR2(500) | | OCI key (`{userUUID}/profile.{ext}`) |
-| `LIKES` 🆕 | VARCHAR2(?) | nullable | 관심사 태그 — AI 컨테이너 userInfos 전달용 |
-| `SEX` 🆕 | VARCHAR2(?) | nullable | 성별 |
-| `AGE` 🆕 | NUMBER | nullable | 나이 |
+| `HOBBIES` 🆕 (구 LIKES rename) | VARCHAR2(500) | nullable | 취미 자유 텍스트 — 가입 플로우에서 유저 입력 |
+| `SEX` | VARCHAR2(10) | nullable | 성별 |
+| `BIRTH_DATE` 🆕 (구 AGE 대체) | DATE | nullable | 생년월일 — 컨테이너 전달 시 `age`로 백엔드가 산정 |
+| `USER_MEMORY` 🆕 (v2.2) | CLOB | nullable | **누적 개인화 메모리** — AI 대화 기반 컨테이너 관리 오파크 텍스트. 백엔드 파싱 비관여, 통째 전달/저장. 갱신 = /report/total 응답 1곳. 하드캡 8KB(방어용). 회원탈퇴 시 PROFILE 삭제에 자동 포함. 규약: 03a §10 |
 | `CREATED_AT` / `UPDATED_AT` | TIMESTAMP | NOT NULL | |
 
-> 🆕 3종(likes/sex/age)은 2026-09-02 확정 — AI 컨테이너의 `userInfos`에 전달되어 문제 출제·대화 개시 맥락으로 사용. **정확한 크기/자료형은 DB 세션에서 DDL 확정 시 결정.** JPA Entity(UserProfile.kt)도 동기화 필요.
+> **v2.2 (2026-09-04, 컨테이너 협의):** `LIKES`→`HOBBIES` rename, `AGE`(NUMBER) 폐지 → `BIRTH_DATE`(DATE) 신설 — 나이 산정식 변경(백엔드), **`USER_MEMORY` CLOB 신설**. 구 3종 컬럼 설명(2026-09-02) 대체. JPA Entity(UserProfile.kt) 동기화 필요.
+
+### 4.2.1 TAGS / USER_PROFILE_TAGS (관심사 태그 — v2.2 신설)
+
+가입 플로우의 선택형 관심사 태그. 클라는 TAGS 테이블을 받아 버블 나열 → 최대 5개 선택.
+
+| 테이블 | 컬럼 | 제약 | 설명 |
+|--------|------|------|------|
+| `TAGS` | `TAG_ID` NUMBER(19) PK IDENTITY / `TAG` VARCHAR2(50) NOT NULL UNIQUE | — | 태그 마스터 15종 시드: 건강관리·등산·골프·여행·트로트·요리·텃밭가꾸기·낚시·독서·바둑·사진·전시관람·국내여행·반려동물·봉사활동 |
+| `USER_PROFILE_TAGS` | `USER_ID` FK→app_user + `TAG_ID` FK→tags (복합 PK) | 최대 5개는 앱 레벨 검증 | 유저↔태그 N:M |
+
+> 컨테이너 전달 시: 선택 태그를 쉼표 구분 문자열(`"등산, 골프, 요리"`)로 조립해 userInfos.tags로 통째 전달 (03a §1.1). TAGS 시드는 init SQL 02번에 포함 — LIVE DB 마이그레이션 필요.
 
 ### 4.3 CONTENT_TYPE (컨텐츠 타입 룩업)
 
@@ -90,14 +103,16 @@ SPEECHAPP_CONTENT
 | `ID` | NUMBER(19) | PK, **SESSION_SEQ** | |
 | `USER_ID` | NUMBER(19) | NOT NULL, FK→app_user | |
 | `THEME` | VARCHAR2(30) | | 서버 랜덤 선택 (TEST/HOSPITAL/CAFE) |
-| `STATUS` | VARCHAR2(20) | DEFAULT 'IN_PROGRESS' | IN_PROGRESS / COMPLETED / ... |
-| `AQ` 🆕 | NUMBER(3) | nullable, CHECK(0~100) | **세션 총점** — 100점 만점 정수(소수점 올림은 AI 컨테이너 책임). 리포트 생성 시점에 적재. 리포트 전 NULL |
-| `LISTEN_FEEDBACK` 🆕 | CLOB | nullable | 알아듣기 지표 피드백 |
-| `NAMING_FEEDBACK` 🆕 | CLOB | nullable | 이름대기 지표 피드백 |
-| `SHADOWING_FEEDBACK` 🆕 | CLOB | nullable | 따라말하기 지표 피드백 |
-| `SELF_TALK_FEEDBACK` 🆕 | CLOB | nullable | 스스로말하기 지표 피드백 |
-| `TALK_FEEDBACK` 🆕 | CLOB | nullable | AI 대화(STORYTELLING) 피드백 |
-| `TOTAL_FEEDBACK` 🆕 | CLOB | nullable | 종합 피드백 |
+| `TYPE` 🆕 (v1.3) | VARCHAR2(20) | | 세션 종류 — `today`(오늘의 학습: 테마 랜덤+무작위 출제) / `theme`(테마별 학습: 기획 시나리오 플로우). 컨테이너 엔드포인트 분기(/sessions/today vs theme)와 매핑 |
+| `STATUS` | VARCHAR2(20) | DEFAULT 'IN_PROGRESS' | IN_PROGRESS / COMPLETED / **COMPLETED_NO_TALK**(이야기 턴 없이 조기종료 — talk/total 피드백 NULL 유지, v1.3) |
+| `AQ` | NUMBER(3) | nullable, CHECK(0~100) | **세션 총점** — 8문제 점수만으로 산출 (AI 대화 미포함, v1.3 확정). /report/problems 시점에 적재. 리포트 전 NULL |
+| `LISTEN_FEEDBACK` 🆕 | CLOB | nullable | 알아듣기 지표 피드백 — /report/problems 시점 적재 |
+| `NAMING_FEEDBACK` 🆕 | CLOB | nullable | 이름대기 지표 피드백 — 동일 |
+| `SHADOWING_FEEDBACK` 🆕 | CLOB | nullable | 따라말하기 지표 피드백 — 동일 |
+| `SELF_TALK_FEEDBACK` 🆕 | CLOB | nullable | 스스로말하기 지표 피드백 — 동일 |
+| `TALK_FEEDBACK` 🆕 | CLOB | nullable | AI 대화(STORYTELLING) 피드백 — **/report/total 시점 적재 (2단계 중 2차)** |
+| `TOTAL_FEEDBACK` 🆕 | CLOB | nullable | 종합 피드백 — 동일 |
+| `REPORT_VIEWED_AT` 🆕 (v1.3) | TIMESTAMP | nullable | 클라가 상세 보고서를 조회한 시점. **null=미조회** — 앱 내 알림함/네비 버블 판별용 (조회 시각 저장으로 조회 여부+시점 동시 커버) |
 | `CREATED_AT` / `UPDATED_AT` | TIMESTAMP | NOT NULL | |
 
 > REPORT 테이블은 **신설하지 않음** (ADR-008) — 리포트 내용이 세션 행에 통합됨. 턴별 상세는 TURN 조회로 충분.
@@ -242,4 +257,6 @@ SPEECHAPP_CONTENT
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v2.0 | 2026-09-02 | **전면 리라이트** — 폐지 테이블/이력 제거, 현행 스키마만 기술. DB 수정 확정사항 반영: IMAGE_RESOURCE cue 2컬럼(IMAGE_HINT_PATH 폐지), LEARNING_SESSION AQ+피드백 6컬럼, VOICE_RECORD rename(SPEAKING_TIME/ARTICULATION_TIME), USER_PROFILE likes/sex/age, TURN.status. OCI hint.json 규약 폐지 |
+| v2.2 | 2026-09-04 | **컨테이너 협의 반영 (2) — 개인화 데이터 개편:** USER_PROFILE — LIKES→HOBBIES rename, AGE 폐지→BIRTH_DATE(DATE) 신설, USER_MEMORY(CLOB nullable, 오파크 — /report/total에서 갱신, 8KB 하드캡) 신설. TAGS(15종 시드)+USER_PROFILE_TAGS(최대 5개) 정규화 신설. ERD 갱신 필요 — SPEECHAPP_USER 테이블 7→9종. LIVE DB 마이그레이션 + init SQL 02번 갱신 + JPA 동기화는 후속 DB 작업 |
+| v2.1 | 2026-09-04 | **컨테이너 협의 반영 (1) — 리포트 2단계 + 세션 분기:** LEARNING_SESSION에 `TYPE`(today/theme — 컨테이너 엔드포인트 분기 매핑), `REPORT_VIEWED_AT`(상세 보고서 조회 시각, null=미조회 — 알림/버블 판별) 신설. STATUS에 `COMPLETED_NO_TALK` 추가(이야기 없이 조기종료 — /report/total 미호출, talk/total 피드백 NULL 유지). AQ 산정 시점 확정 = /report/problems(8문제만). 피드백 적재 2단계화(4지표=problems, talk/total=total). LIVE DB 마이그레이션은 후속 DB 작업(init SQL 05번 갱신 포함) | **컨테이너 협의 반영 (1) — 리포트 2단계 + 세션 분기:** LEARNING_SESSION에 `TYPE`(today/theme — 컨테이너 엔드포인트 분기 매핑), `REPORT_VIEWED_AT`(상세 보고서 조회 시각, null=미조회 — 알림/버블 판별) 신설. STATUS에 `COMPLETED_NO_TALK` 추가(이야기 없이 조기종료 — /report/total 미호출, talk/total 피드백 NULL 유지). AQ 산정 시점 확정 = /report/problems(8문제만). 피드백 적재 2단계화(4지표=problems, talk/total=total). LIVE DB 마이그레이션은 후속 DB 작업(init SQL 05번 갱신 포함) |
 | (구 v0.5 이하) | ~2026-09-01 | 세션/턴/녹음 재설계 이력은 archive 및 계획서 §15 참고 |

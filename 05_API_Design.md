@@ -233,7 +233,7 @@
 
 ## 7. 구현 상태 (2026-09-03 — 데모 백엔드 완료)
 
-> **구현 확인 (Spring Boot demo 브랜치, 스텁 AI 컨테이너):** 커밋 f4d86bf/8ec2654/bc98e86/44fe801 — push 보류(VM 로컬).
+> **구현 확인 (Spring Boot demo 브랜치, 스텁 AI 컨테이너):** push 완료 — origin/demo = 0dfda5a (44fe801..0dfda5a, P3-30 보완 포함).
 > 실제 경로/키는 구현과 다를 수 있음 — `/api/v1/sessions/v2` (데모 버전), `demo.themes: TEST`(빈 테마 회피 프로퍼티), `demo.talk-turn-limit`(이야기 턴 하드캡, 데모 3턴).
 > 스텁 구조: `ai/AiContainerClient` 인터페이스 + `StubAiContainerClient`(자연 지연 시뮬레이션 — 문제 2~3s / 채점 0.8~1.5s / 이야기 1~2s / 리포트 2~3s, 한국어 응답) + `RealAiContainerClient`(TODO). `ai.container.mode: stub|real` 전환 — AI 컨테이너 배포 시 프로퍼티만 변경.
 > 스텁 TTS: `src/main/resources/tts_samples/tts_{hello,listen,naming,shadowing}.mp3` (edge-tts 생성, 2026-09-03 커밋 1164d45) — `GET /api/v1/voice/{id}` 스텁 스트리밍.
