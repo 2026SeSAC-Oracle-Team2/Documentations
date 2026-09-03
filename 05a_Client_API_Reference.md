@@ -45,7 +45,7 @@
 |--------|------|------|-----------|------|
 | GET | `/me` | — | UserDto (id/uuid/email/nickname/profile_image_url/level/created_at) | 만료 시 403 → 클라 무음 refresh |
 | PATCH | `/me` | `{ "nickname": "..." }` | UserDto | 닉네임 수정 |
-| DELETE | `/me` | — | 204 | ⚠️ **현재 500 버그** — 학습 이력 있으면 ORA-02292 FK (백엔드 후속 B-1) |
+| DELETE | `/me` | — | **204 No Content** | ✅ **B-1 수정 완료** — FK 역순 하드딜리트(TURN_IMAGE→VOICE_RECORD→TURN→LEARNING_SESSION→USER_PROFILE→APP_USER) + OCI 유저 파일(userfiles {userUUID}/ 하위) 커밋 후 삭제(실패 시 로그만) + Firebase afterCommit 삭제 |
 | POST | `/me/profile-image` | multipart `image` | `{ "profile_image_url": "..." }` | 5MB |
 | GET | `/me/profile-image` | — | 이미지 바이너리 (프록시 스트리밍) | 캐시버스터 `?v=` 권장 |
 
@@ -138,7 +138,7 @@
 // 응답 data — TalkData (스텁 1~2초)
 { "turnId": 511, "turnNumber": 9,
   "aiText": "아까 문제 푸느라 고생했네요! 오늘 하루 어땐어요?",  // TURN.prompt_text
-  "userText": "오늘은 카페에 갔어요" }   // 이번 턴 유저 STT — ⚠️ 현재 스텁이 null 반환 중 (B-2 수정 대상), 클라는 null 시 "(인식된 말 없음)" 표시
+  "userText": "오늘은 카페에 갔어요" }   // 이번 턴 유저 STT — ✅ B-2 수정 완료: 음성 턴은 스텁 더미 STT 반환(첫 호출은 null 유지), 클라는 null 시 "(인식된 말 없음)" 표시
 ```
 - 데모 하드캡: `demo.talk-turn-limit=3` — 4번째 제출 시 E0401(세션 이야기 턴 소진) → 클라 종료 안내
 - 조기종료: 클라가 그냥 `/finish` 호출하면 됨
@@ -239,14 +239,17 @@ demo:
 
 ## 7. 알려진 이슈 (백엔드 후속 세션 B-1~B-3)
 
+> ✅ **2026-09-03 전부 수정 완료** (demo 브랜치) — 검증 실측은 아래 상태 표.
+
 | 이슈 | 상태 |
 |------|------|
-| 회원탈퇴 500 (FK 위발) | B-1 |
-| 스텁 aichat userText null | B-2 |
-| 문제 출제 이미지 풀 필터 (NAMING=cue 필수, SELF_TALK=tag 필수) | B-3 — imageList 구성 측이라 운영에도 유효 |
+| 회원탈퇴 500 (FK 위발) | ✅ B-1 해결 — FK 역순 하드딜리트 + OCI 파일 정리. 실측: 학습 데이터 보유 계정 탈퇴 204 → DB 잔존 0 → 재가입 정상 |
+| 스텁 aichat userText null | ✅ B-2 해결 — 음성 턴 더미 STT 반환(첫 호출 null 유지, 03a §6 규약). 실측: TURN.answer_text DB 적재 확인 |
+| 문제 출제 이미지 풀 필터 (NAMING=cue 필수, SELF_TALK=tag 필수) | ✅ B-3 해결 — imageList 구성 시점 필터 + 스텁 조건 선택 보정. 실측: NAMING cue 적합율 100% (SELF_TALK은 tag 데이터 1개뿐 → 완화 로그와 함께 전체 풀 폴백 — tag 데이터 보충 시 자동 적용) |
 
 ## 8. 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
+| v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |

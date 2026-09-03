@@ -41,7 +41,7 @@
 |--------|------|------|
 | `sessionId` | 세션 ID | 정합성 확인용 |
 | `thema` | 테마 | 서버가 랜덤 선택한 값 (`TEST` / `HOSPITAL` / `CAFE`) |
-| `imageList` | 선택된 테마의 이미지 리스트 | `[{imageId, imageName}]` — IMAGE_THEMA로 조회한 테마 이미지 풀. **어떤 이미지를 어느 문제에 쓸지는 AI(LLM)가 선택** |
+| `imageList` | 선택된 테마의 이미지 리스트 | `[{imageId, imageName}]` — IMAGE_THEMA로 조회한 테마 이미지 풀. **어떤 이미지를 어느 문제에 쓸지는 AI(LLM)가 선택**. ⚠️ **조건 필터는 백엔드 책임 (B-3, 2026-09-03):** NAMING용은 SEMANTIC_CUE 보유 이미지, SELF_TALK용은 IMAGE_TAG_PATH 보유 이미지로 필터해 별도 필드(`namingImageIds`/`selfTalkImageIds`, 선택)로 동봉 — 조건 풀 부족 시 백엔드가 완화+경고. 스텁은 부분집합을 존중하며, 실컨테이너도 수신 시 존중 권장 |
 | `userID` | 유저 ID | |
 | `userInfos` | 유저 정보 | 아래 표 |
 | `userAQ` | 유저 대표 AQ | 최근 20세션 중 AQ 상위 10개 평균 (정수). 세션 0개면 `null` — 추후 가입 설문으로 임시 AQ 주입 예정 |
@@ -281,3 +281,4 @@ LISTEN은 정답 인덱스가 `/sessions` 응답으로 이미 백엔드가 보�
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v1.0 | 2026-09-02 | 초안 확정 — 세션 기획 회의(T~Z 확정사항) 반영: /answer/listen 삭제(BE 자체채점), /aichat userText 추가, selfTalk scoreSelfTalk 오타 수정, turnId 리매핑 규약, 음성 라이프사이클 확정 |
+| v1.1 | 2026-09-03 | §2 imageList에 B-3 조건 필터 책임 주석 갱신 — NAMING=SEMANTIC_CUE/SELF_TALK=IMAGE_TAG_PATH 필터는 백엔드가 수행, 선택 필드 namingImageIds/selfTalkImageIds로 전달(완화 규약 포함) |
