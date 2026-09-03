@@ -85,7 +85,7 @@
 - 프로필 사진: OCI 비공개 버킷 + 서버 스트리밍, 캐시 무효화는 `?v=` 쿼리.
 - **신규 유저 판별:** `isNewUser == true || nickname == null` → SignUpActivity.
 
-## 4. 세션/학습 API (REST) — 🔜 신규 구현 대상
+## 4. 세션/학습 API (REST) — ✅ 구현 완료 (스텁 AI 컨테이너, demo 브랜치 2026-09-03)
 
 > 기획 기준: `06_Session_Flow_Spec.md`. 이번 개발 단위의 핵심.
 > ⚠️ dev용 임시 규칙: `SecurityConfig`에서 `/api/v1/sessions`, `/api/v1/voice/**` permitAll (운영 반영 금지).
@@ -95,8 +95,8 @@
 | 항목 | 내용 |
 |------|------|
 | **Method** | `POST` |
-| **Path** | `/api/v1/sessions` |
-| **인증** | Bearer JWT |
+| **Path** | `/api/v1/sessions` — 구현: `/api/v1/sessions/v2` (데모, 2026-09-03) |
+| **인증** | Bearer JWT (dev용 permitAll — SecurityConfig) |
 
 **동작:** 테마 랜덤 선택(TEST/HOSPITAL/CAFE) → LEARNING_SESSION INSERT → IMAGE_THEMA로 테마 이미지 풀 조회 → **AI 컨테이너 `POST /sessions`(8문제 일괄 생성)** → TURN 8행 INSERT(PENDING) + TTS OCI 적재 + VOICE_RECORD AI 행 → 응답.
 
@@ -226,14 +226,23 @@
 |-----|------|
 | 인증 3종 / 사용자 5종 | ✅ 구현 완료 |
 | 음성 업로드(P3-19: POST /api/v1/voice/upload) | ✅ 구현 완료 (E2E 검증) |
-| 세션 생성/문제 일괄 생성 | 🔜 이번 단위 |
-| 턴 답안 제출 4종 / 힌트 / 이야기 턴 | 🔜 이번 단위 |
-| 세션 종료+리포트 / 음성 스트리밍 | 🔜 이번 단위 |
+| 세션 생성/문제 일괄 생성 | ✅ (스텁, demo) |
+| 턴 답안 제출 4종 / 힌트 / 이야기 턴 | ✅ (스텁) |
+| 세션 종료+리포트 / 음성 스트리밍 | ✅ (스텁) |
 | 대시보드/유저수준/설정 API | ⏳ Phase 4 |
 
-## 7. 변경 이력
+## 7. 구현 상태 (2026-09-03 — 데모 백엔드 완료)
+
+> **구현 확인 (Spring Boot demo 브랜치, 스텁 AI 컨테이너):** 커밋 f4d86bf/8ec2654/bc98e86/44fe801 — push 보류(VM 로컬).
+> 실제 경로/키는 구현과 다를 수 있음 — `/api/v1/sessions/v2` (데모 버전), `demo.themes: TEST`(빈 테마 회피 프로퍼티), `demo.talk-turn-limit`(이야기 턴 하드캡, 데모 3턴).
+> 스텁 구조: `ai/AiContainerClient` 인터페이스 + `StubAiContainerClient`(자연 지연 시뮬레이션 — 문제 2~3s / 채점 0.8~1.5s / 이야기 1~2s / 리포트 2~3s, 한국어 응답) + `RealAiContainerClient`(TODO). `ai.container.mode: stub|real` 전환 — AI 컨테이너 배포 시 프로퍼티만 변경.
+> 스텁 TTS: `src/main/resources/tts_samples/tts_{hello,listen,naming,shadowing}.mp3` (edge-tts 생성, 2026-09-03 커밋 1164d45) — `GET /api/v1/voice/{id}` 스텁 스트리밍.
+> **E2E 검증 완료 (세션 24/26/27):** LISTEN 100/0 · NAMING 힌트 감점(힌트0=82, 힌트2=60) · 힌트 소진 E0401 차단 · 이야기 3턴+4턴째 차단 · finish→AQ=67+피드백 6종 저장 · OCI 업로드·mp3 스트리밍(HTTP 200) · TURN.hints_shown·VOICE_RECORD 발화지표 3종 적재.
+
+## 8. 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v2.0 | 2026-09-02 | 전면 리라이트 — 문제풀이 세션 API 신규 정의(§4 전체), WebSocket 상태 정리(§5), 음성 스트리밍/콘텐츠 API 갱신. 구 WebSocket 중심 설계는 archive로 |
+| v2.0.1 | 2026-09-03 | 데모 백엔드 구현 완료 반영 — §7 구현 상태 추가(스텁 구조, demo.* 프로퍼티, E2E 검증 결과). 실구현 경로 /api/v1/sessions/v2 주석 |
 | (구 v1.x) | ~2026-09-01 | 기본 규격/구현 완료 API 이력은 유지(§1~3 흡수) |
