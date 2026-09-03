@@ -14,6 +14,7 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | [01_Requirements.md](01_Requirements.md) | 요구사항 (SRS) — 기능, 유저 스토리, 우선순위 | 낮음 |
 | [02_Architecture.md](02_Architecture.md) | 시스템 아키텍처 — 구성도, 음성 3단계 저장, 운영 규칙, 확장 로드맵 | 중간 |
 | [03_AI_Container_Contract.md](03_AI_Container_Contract.md) | **BE ↔ AI 컨테이너 API 계약** — 엔드포인트, 스키마, 산정식 | 개발 중 |
+| [03a_AI_Container_API_Reference.md](03a_AI_Container_API_Reference.md) | **BE↔AI컨테이너 실구현 명세서** (엔드포인트별 JSON 예시, 컨테이너 구현자용) | 개발 중 |
 | [04_Database_Design.md](04_Database_Design.md) | DB 설계 — 현행 스키마 전체 (9테이블 + 제약 + 규약) | 중간 |
 | [05_API_Design.md](05_API_Design.md) | 클라 ↔ BE API — 인증/사용자/세션/턴/리포트 | 개발 중 |
 | [05a_Client_API_Reference.md](05a_Client_API_Reference.md) | **클라↔BE 실구현 명세서** (demo 기준 역추적 + 스텁↔real 전환 가이드) | 개발 중 |
