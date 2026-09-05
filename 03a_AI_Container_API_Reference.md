@@ -1,6 +1,6 @@
 # 백엔드 ↔ AI 컨테이너 API 명세서 (Spring Boot ↔ FastAPI — 실구현 기준)
 
-> **버전:** v1.7 (2026-09-04) — 실구현 DTO 역추적 + **컨테이너 협의 확정 (3·5·6·7) 반영** (demo 브랜치 실측 기반, 협의분은 구현 예정 상태 표기)
+> **버전:** v1.8 (2026-09-05) — D-4 userMemory 개인화 구현 완료 반영 (스텁 갱신 시뮬레이션 + 백엔드 라이프사이클 실측 기준, 협의분 중 미구현은 구현 예정 상태 표기 유지)
 > **용도:** AI 컨테이너(FastAPI) 구현자가 그대로 따라 할 수 있는 요청/응답 JSON 예시 집합.
 > 설계 계약 = `03_AI_Container_Contract.md` · 전환 가이드 = `05a_Client_API_Reference.md` §6
 > **JSON 키 네이밍은 본 문서가 단일 기준** — 백엔드 DTO의 `@JsonProperty` 그대로. 컨테이너는 이 키를 정확히 지켜야 함.
@@ -533,7 +533,7 @@
 | 점수 | 유사도 시뮬레이션 60~95 + 감점 | 실제 채점 알고리즘 (루브릭 컨테이너 내부) |
 | 리포트 | 고정 문구 + AQ 55~85 → **v1.2: 2단계 분리 — problems(AQ+4지표, 2~3s) / total(talk+total, 10s)** | 실제 AQ 산정 + 개인화 피드백 (동일 2단계) |
 | 이미지 선택 | 풀에서 무작위 → **v1.2: 타입별 배열(imageListNaming/SelfTalk/Listening) 내에서 무작위** | 유저 정보·맥락 고려 LLM 선택 (해당 배열 내에서) |
-| userMemory | 고정 더미 문자열 반환 | 실제 LLM 갱신 (§10 규약) |
+| userMemory | **✅ v1.8 갱신 시뮬레이션 구현 완료 (D-4)** — 기존값 있으면 기존+더미 신규 문장 반환, null이면 더미 신규 작성(11a 선언형 스타일). aichat에는 미반환(갱신 지점=/report/total 유일) | 실제 LLM 갱신 (§10 규약) |
 
 ## 10. userMemory — 누적 개인화 메모리 규약 (v1.3)
 
@@ -587,4 +587,5 @@
 
 
 | v1.7 | 2026-09-04 | **컨테이너 협의 확정 (7) — 대표점수 테이블 이동:** §2 userAQ 출처 갱신 — USER_PROFILE → USER_REPRESENTATIVE_SCORES (대표점수 5종 통합). 컨테이너 입장 변화 없음 |
-| v1.3 | 2026-09-04 | **컨테이너 협의 반영 (2) — userMemory 개인화:** §1.1 userInfos 개편 — `userMemory` 신설, `likes`→`hobbies` rename, `tags` 신설(선택 태그 최대 5개, 쉼표 문자열), age=BIRTH_DATE 기반 산정. §7.2 /report/total — 요청에 기존 `userMemory` 추가, 응답에 **갱신된 `userMemory`** 추가(변경 없으면 동일값 반환, 실패 시 기존 유지). **§10 신설** — userMemory 라이프사이클/책임 경계/내용 규약(민감정보 저장 금지 — 프롬프트 통제). 백엔드는 오파크 CLOB 저장소(USER_PROFILE.USER_MEMORY, 하드캡 8KB) |
+| v1.3 | 2026-09-04 | **컨테이너 협의 반영 (2) — userMemory 개인화:** §1.1 userInfos 개편 — `userMemory` 신설, `likes`→`hobbies` rename, `tags` 신설(선택 태그 최대 5개, 쉼표 문자열), age=BIRTH_DATE 기반 산정. §7.2 /report/total — 요청에 기존 `userMemory` 추가, 응답에 **갱신된 `userMemory`** 추가(변경 없으면 동일값 반환, 실패 시 기존 유지). **§10 신설** — userMemory 라이프사이클/책임 경계/내용 규약(민감정보 저장 금지 — 프롬프트 통제). 백엔드는 오파크 CLOB 저장소(USER_PROFILE.USER_MEMORY, 하드캡 8KB) 
+| v1.8 | 2026-09-05 | **D-4 구현 완료 반영:** §9 차이표 userMemory 행 갱신 — 스텁 갱신 시뮬레이션 구현 완료 표기(기존+더미 신규/신규 작성, aichat 미반환). 백엔드 실측: ReportRequest/Response userMemory 필드 동작, 소실 방지(null 응답→기존 유지)·하드캡 8192문자 절단 실측 완료. 리포트 2단계 분리(/report/problems·total 엔드포인트 분리)는 D-5 — 현재는 동기 finish 1회 호출에 §7.2 total 규약만 부착 ||
