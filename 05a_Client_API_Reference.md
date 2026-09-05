@@ -1,6 +1,6 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.6 (2026-09-06) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 9521f2b D-5, Android 514fdce) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
+> **버전:** v1.7 (2026-09-06) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 9b35395 D-8②b, Android d465298→1fc9825) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
 
@@ -355,6 +355,39 @@ GET /api/v1/sessions/{sessionId}/report?userId={userId}
 - 응답 수신 시 백엔드가 **REPORT_VIEWED_AT 기록** — **null일 때만 기록**(최초 1회, v1.6 구현 방식 확정 — 매 조회 덮어쓰기 아님). 응답 reportViewedAt = 기록된 시각(이미 기록돼 있으면 기존 시각 반환)
 - 학습 중단 세션(COMPLETED_NO_TALK)은 8.2 리스트에서 제외 — 8.3 직접 호출도 **E0404** (실측)
 
+### 8.4 GET /api/v1/users/me/stats — 홈 통계 (연속 학습 + 평균 점수) — ✅ **D-8②b 실구현 완료 (2026-09-06)**
+
+JWT 필수 — §8.1 scores와 동일한 인증·봉투·ErrorResponse 패턴.
+
+```
+GET /api/v1/users/me/stats
+Authorization: Bearer {accessToken}
+
+→ 200
+{
+  "success": true,
+  "data": {
+    "streakDays": 1,
+    "avgScore": 72.3,
+    "deltaScore": null
+  },
+  "error": null,
+  "timestamp": "..."
+}
+```
+
+**산정 규약 (확정분 — 05a 실구현 기준):**
+
+| 필드 | 산정식 | 비고 |
+|------|--------|------|
+| streakDays | 완료 세션의 CREATED_AT 날짜(서버 로컬 KST) 집합 → 오늘 또는 어제부터 소급해 하루라도 끊기면 중단. 오늘/어제 모두 없으면 0 | 오늘 완료분 없어도 어제까지 연속이면 유지(오늘 아직 학습 전 = 0 아님). 중단 세션(COMPLETED_NO_TALK) 제외 — §8.2와 동일 원칙 |
+| avgScore | 최근 10개 완료 세션 AQ 평균, 소수 1자리(ROUND HALF_UP) | ⚠️ **ADR-009 대표점수(최근 20 상위 10)와 다른 식 — "최근 10개 전부 평균"(상위 선별 아님)**. 10개 미만이면 보유분 평균, 0개면 null |
+| deltaScore | 최근 10개 평균 − 직전 10개(11~20번째) 평균, 소수 1자리 | 11번째 이상 없으면 null(표시 생략). 부호 포맷(+3.4/−2.1)은 클라 담당 — 서버는 수치만 |
+
+- **완료 세션 필터 = `STATUS != 'COMPLETED_NO_TALK' AND AQ IS NOT NULL`** — §8.2 history와 **동일한 공용 프레디케이트**(CompletedSessionFilter) 사용. 실측 근거: COMPLETED_NO_TALK 세션에도 간이 AQ가 적재되는 케이스 존재(D-5 리포트 2단계 지점②) — 단일 `AQ IS NOT NULL` 필터를 쓰면 streak/avg가 중단 세션으로 오염됨
+- 실측 예시(user 26, 2026-09-06): 완료 세션 8건(09-06 6건 + 09-03 2건, AQ 합 578) → streak=1(09-05 완료 없어 소급 중단)·avg=72.3(578/8=72.25→72.3)·delta=null(11번째 없음)
+- 신규 유저(완료 세션 0건): `{streakDays: 0, avgScore: null, deltaScore: null}` — 클라는 avgScore null 시 카드 값 자리 "-" 표시(실측)
+
 ## 9. 변경 이력
 
 | 버전 | 날짜 | 내용 |
@@ -362,6 +395,7 @@ GET /api/v1/sessions/{sessionId}/report?userId={userId}
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
 
 
+| v1.7 | 2026-09-06 | **D-8②b 홈 통계 API 실구현 반영:** **§8.4 신설** — GET /api/v1/users/me/stats(JWT·scores 동일 봉투): streakDays(완료 세션 일자 연속·서버 로컬 KST·오늘/어제 소급 — 오늘 완료 없어도 어제까지 연속이면 유지·중단 세션 제외), avgScore(최근 10개 완료 세션 AQ 평균 소수 1자리 — **ADR-009 아님, 최근 10개 전부 평균** 명시), deltaScore(최근 10 평균 − 직전 10 평균·11번째 없으면 null·부호 포맷은 클라). 완료 세션 필터 = `STATUS != 'COMPLETED_NO_TALK' AND AQ IS NOT NULL` — §8.2 history와 공용 프레디케이트(CompletedSessionFilter) 공유. 실측: user 26 streak=1·avg=72.3·delta=null(손계산 일치), 신규 유저 0/null, 중단 세션(AQ 적재분 포함) 불반영 |
 | v1.6.1 | 2026-09-06 | **D-8② 리팩토링 계약 불변 확인 (내용 갱신 없음):** SessionFlowService 1,046행 관심사별 분할(커밋 42c6a49+3a8772f — SessionCreationService·SessionScoringService·SessionReportQueryService·ScoreCalculationService·SessionTurnSupport, SessionFlowService=퍼사드) 수행 — **엔드포인트·JSON 키·인증 방식 전부 무변경, 회귀 실측 ①~⑧ diff 0으로 동작 불변 증명**(scores·history·report76 리팩토링 전/후 완전 동일). 부수 구현: RealAiContainerClient base-url이 ai.container.base-url 프로퍼티 주입으로 변경(기본값 http://localhost:8000 유지 — 서버 내부 호출값, 클라 계약과 무관). 이 문서는 v1.6 그대로 유효 |
 | v1.6 | 2026-09-06 | **D-5 대시보드+세션 플로우 실구현 전면 갱신:** §3.1 세션 2종 분기(POST /sessions/today·/theme — thema 쿼리파라미터 TEST/HOSPITAL/CAFE 이외 E0400·소문자 허용, /v2는 하위호환 유지, SessionCreateData.type 필드 신설, LISTEN 세분화 D-2 완료 표기), §3.5 finish 재편(간이 보고서 응답 — talk/total 항상 null·중단/완료 판정 규약·userAQ=REP_SCORES 캐시 조회 교체), §8.2 ✅ D-5 실구현(JWT 필수·STATUS != COMPLETED_NO_TALK **AND AQ IS NOT NULL** 규약 확정·페이징 미도입), §8.3 ✅ D-5 실구현(userId 쿼리파라미터 소유 검증·radar TURN 집계·answer 계약 확정 — LISTEN_TEXT=선택지 텍스트 추출·LISTEN_PICTURE=image_id context·REPORT_VIEWED_AT null일 때만 기록·중단 세션 E0404), §0 인증 현황 갱신(history JWT·report userId 병용), §6.1/6.2 전환 가이드 갱신(talk-turn-limit 8·계약 키 표 2종 엔드포인트+리포트 2단계). **클라 D-6 연동 시 주의: finish 응답 talk/total null — 세부 보고서는 §8.3에서 수령** |
 | v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
