@@ -43,11 +43,16 @@
 
 | Method | Path | 요청 | 응답 data | 비고 |
 |--------|------|------|-----------|------|
-| GET | `/me` | — | UserDto (id/uuid/email/nickname/profile_image_url/level/created_at) | 만료 시 403 → 클라 무음 refresh |
-| PATCH | `/me` | `{ "nickname": "..." }` | UserDto | 닉네임 수정 |
-| DELETE | `/me` | — | **204 No Content** | ✅ **B-1 수정 완료** — FK 역순 하드딜리트(TURN_IMAGE→VOICE_RECORD→TURN→LEARNING_SESSION→USER_PROFILE→APP_USER) + OCI 유저 파일(userfiles {userUUID}/ 하위) 커밋 후 삭제(실패 시 로그만) + Firebase afterCommit 삭제 |
+| GET | `/me` | — | UserDto (id/uuid/email/nickname/profileImageUrl/level/createdAt + **hobbies/sex/birthDate/tags/userAq** — D-3 확장) | 만료 시 403 → 클라 무음 refresh. userAq null = 설문 미응답(재노출 판별 기준) |
+| PATCH | `/me` | `{ "nickname": "...", "hobbies": "...", "sex": "M", "birthDate": "1990-05-12", "tagIds": [1,2,9] }` (전부 nullable — 부분 업데이트) | UserDto | **D-3 확장** — 닉네임·취미·성별·생년월일(ISO yyyy-MM-dd 고정, 파싱 실패 E0400)·태그. tagIds는 **전량 교체**(기존 DELETE 후 INSERT — 클라가 항상 현재 선택 전체 전송, null=변경 없음, 명시적 `[]`=전체 삭제). >5개 → E0400 / 없는 tag_id → E0404 |
+| GET | `/me/tags` | — | `{ "tags": [ { "tagId": 1, "tag": "건강관리" }, ... 15종 ] }` | **D-3 신설** — 태그 마스터 15종 (가입 화면 버블용). order by tagId |
+| POST | `/me/survey` | `{ "answers": [1~5 정수 5개] }` (문항 순서대로, 길이 5 고정) | `{ "userAq": 30, "user": UserDto }` | **D-3 신설** — 가입 설문 접수 (06 §5.2). **산출 주체 = 서버**(요청은 answers 원문만). 총점=Σ(answer×4) → 20~61→30 / 62~80→70 / 81~100→90. USER_REPRESENTATIVE_SCORES upsert(행 없으면 INSERT, 있으면 갱신 — 재노출 케이스, 중복 응답 허용·405 거부 금지). 응답 원문 미저장(환산 AQ만). 문항 텍스트는 앱 고정 — 서버 저장 없음 |
+| GET | `/me/scores` | — | `{ "userAq": 73, "listen": 75, "naming": 74.75, "shadowing": 79.75, "selfTalk": 79.75 }` | **D-3 신설 (§8.1 실구현)** — 대표점수 조회. REP_SCORES 단일 SELECT — null은 null 전달(클라 폴백: 방사형 0 표시+안내문) |
+| DELETE | `/me` | — | **204 No Content** | ✅ **B-1 수정 완료** — FK 역순 하드딜리트(**D-3 확장: TURN_IMAGE→VOICE_RECORD→TURN→LEARNING_SESSION→USER_PROFILE_TAGS→USER_REPRESENTATIVE_SCORES→USER_PROFILE→APP_USER 8단계**, TAGS 마스터는 보존) + OCI 유저 파일(userfiles {userUUID}/ 하위) 커밋 후 삭제(실패 시 로그만) + Firebase afterCommit 삭제 |
 | POST | `/me/profile-image` | multipart `image` | `{ "profile_image_url": "..." }` | 5MB |
 | GET | `/me/profile-image` | — | 이미지 바이너리 (프록시 스트리밍) | 캐시버스터 `?v=` 권장 |
+
+> **UserDto 확장 (D-3, 하위호환):** 기존 필드 유지 + `hobbies`(취미 자유 텍스트)/`sex`/`birthDate`(ISO yyyy-MM-dd 문자열)/`tags`(선택 태그 쉼표 문자열 — 03a §1.1 형식 "등산, 골프")/`userAq`(REP_SCORES 조회, null 허용) 추가. 제거된 필드 없음 — 기존 클라 파싱 무영향. 오류 코드: IllegalArgumentException→E0400 / NoSuchElementException→E0404 / IllegalStateException→E0401 (GlobalExceptionHandler 매핑).
 
 ## 3. 세션 플로우 API — `/api/v1/sessions` (스텁 AI 컨테이너)
 
@@ -261,11 +266,11 @@ demo:
 | 스텁 aichat userText null | ✅ B-2 해결 — 음성 턴 더미 STT 반환(첫 호출 null 유지, 03a §6 규약). 실측: TURN.answer_text DB 적재 확인 |
 | 문제 출제 이미지 풀 필터 (NAMING=cue 필수, SELF_TALK=tag 필수) | ✅ B-3 해결 — imageList 구성 시점 필터 + 스텁 조건 선택 보정. 실측: NAMING cue 적합율 100% (SELF_TALK은 tag 데이터 1개뿐 → 완화 로그와 함께 전체 풀 폴백 — tag 데이터 보충 시 자동 적용) |
 
-## 8. 대시보드 / 세부 보고서 API (v1.4 협의 — ⏳ 구현 예정)
+## 8. 대시보드 / 세부 보고서 API (v1.4 협의 — 8.1은 D-3 실구현 완료, 8.2/8.3은 ⏳ D-5)
 
 > 대시보드 탭 실구현 + 세부 보고서 화면용. 인증: JWT (Bearer). 스키마: USER_REPRESENTATIVE_SCORES + LEARNING_SESSION(SESSION_NAME 포함, 04 v2.6).
 
-### 8.1 GET /api/v1/users/me/scores — 대표점수 (대시보드 방사형)
+### 8.1 GET /api/v1/users/me/scores — 대표점수 (대시보드 방사형) — ✅ **D-3 실구현 완료 (2026-09-05)**
 
 ```json
 // 응답 data
@@ -334,5 +339,6 @@ demo:
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
 
 
+| v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
 | v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |
