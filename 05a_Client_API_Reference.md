@@ -1,6 +1,6 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.0 (2026-09-04) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 44fe801+9b32634, Android 514fdce)
+> **버전:** v1.4 (2026-09-04) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 44fe801+9b32634, Android 514fdce) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
 
@@ -87,7 +87,21 @@
 ```
 - ⚠️ `mediaType`은 실측 **소문자** `text` | `image` (스펙 문서 대문자 TEXT|IMAGE와 다름)
 - ⚠️ 경로가 실구현 `/v2` — 스펙 문서와 차이. 클라는 v2 사용 중
-- type은 대문자 `LISTEN|NAMING|SHADOWING|SELF_TALK` (클라 매핑 확인됨)
+- type은 대문자 `LISTEN|NAMING|SHADOWING|SELF_TALK` (클라 매핑 확인됨). ⏳ **v1.2 협의: LISTEN → LISTEN_TEXT/LISTEN_PICTURE 세분화 예정** (03a v1.4 — 미구현, 현재 데모는 LISTEN 유지)
+
+### 3.1a 클라 세션 흐름 규약 (v1.3 협의 — 구현 예정)
+
+| 항목 | 규약 |
+|------|------|
+| 제출 제한 | **30초 통일** — 모든 문제 + AI 대화 답변. 30초 도달 시 클라가 녹음 컷 → multipart 강제 제출 |
+| 대기 카운트다운 | LISTEN·SHADOWING 3초 후 TTS 재생 / NAMING·SELF_TALK 5초 (사진 관찰) |
+| SHADOWING 흐름 | TTS 재생 종료 → 3초 후 녹음 시작 → 30초. **[다시 듣기] 없음** (마이크 오염 방지) |
+| LISTEN 30초 도달 | 선택 누름=최근 선택지로 제출 / 미선택=오답 처리 제출. [다시 듣기] 제공(카운트다운 진행 중에도 무관) |
+| NAMING 힌트 | 30초 카운트다운과 무관 (시간 정지 없음) |
+| 안내 | 텍스트만 — 안내 TTS 없음. 마이크 아이콘 대신 "녹음 시작/완료" 굵은 텍스트 (시니어 UI) |
+| 버튼 분리 | "제출"(시간 제한)과 "다음으로"(제한 없음 — 이동 자유) 구분 |
+| AI 대화 | [음성으로 답변하기] 직접 클릭 시작, 녹음 30초 제한 표시, [녹음 완료]/30초 도달 → 자동 제출. LLM 로딩 중 "덕분이가 답변을 생각중이에요" |
+| 중단/완료 | 1~3턴 중단=우는 덕분이 팝업(학습 중단 — 상세 보고서 없음) / 4턴째 답변 후 [학습 마치기] 전환(학습 완료 — total 호출) / 8턴 하드캡=AI 마무리 응답 후 [학습 결과 보기] |
 
 ### 3.2 답안 제출 (타입별)
 
@@ -141,7 +155,7 @@
   "userText": "오늘은 카페에 갔어요" }   // 이번 턴 유저 STT — ✅ B-2 수정 완료: 음성 턴은 스텁 더미 STT 반환(첫 호출은 null 유지), 클라는 null 시 "(인식된 말 없음)" 표시
 ```
 - 데모 하드캡: `demo.talk-turn-limit=3` — 4번째 제출 시 E0401(세션 이야기 턴 소진) → 클라 종료 안내
-- 조기종료: 클라가 그냥 `/finish` 호출하면 됨
+- 조기종료(구 데모): 클라가 `/finish` 호출 — ⏳ **v1.6 협의로 개편 예정**: 1~3턴 중단=학습 중단 판정(우는 덕분이 팝업 → total 미호출) / 4턴째 답변 후 [학습 마치기]=학습 완료 판정(total 호출, 유저 4턴 답변까지만). 데모 구현은 구 규약 유지 — 백엔드 작업 세션에서 판정 로직 반영
 
 ### 3.5 POST /{sessionId}/finish — 세션 종료 + 리포트
 
@@ -247,9 +261,78 @@ demo:
 | 스텁 aichat userText null | ✅ B-2 해결 — 음성 턴 더미 STT 반환(첫 호출 null 유지, 03a §6 규약). 실측: TURN.answer_text DB 적재 확인 |
 | 문제 출제 이미지 풀 필터 (NAMING=cue 필수, SELF_TALK=tag 필수) | ✅ B-3 해결 — imageList 구성 시점 필터 + 스텁 조건 선택 보정. 실측: NAMING cue 적합율 100% (SELF_TALK은 tag 데이터 1개뿐 → 완화 로그와 함께 전체 풀 폴백 — tag 데이터 보충 시 자동 적용) |
 
-## 8. 변경 이력
+## 8. 대시보드 / 세부 보고서 API (v1.4 협의 — ⏳ 구현 예정)
+
+> 대시보드 탭 실구현 + 세부 보고서 화면용. 인증: JWT (Bearer). 스키마: USER_REPRESENTATIVE_SCORES + LEARNING_SESSION(SESSION_NAME 포함, 04 v2.6).
+
+### 8.1 GET /api/v1/users/me/scores — 대표점수 (대시보드 방사형)
+
+```json
+// 응답 data
+{
+  "userAq": 55,
+  "listen": 78.5, "naming": 70.0, "shadowing": 82.4, "selfTalk": 65.2
+}
+```
+
+- 출처: USER_REPRESENTATIVE_SCORES (USER_AQ + 4지표 — LISTEN은 LISTEN_TEXT/LISTEN_PICTURE 통합)
+- null = 캐시 미산출(설문 미응답 or 실세션 0) — 클라는 방사형에서 0 표시 후 "학습을 시작해보세요" 등 폴백
+
+### 8.2 GET /api/v1/users/me/sessions/history — 지난 학습 카드 리스트
+
+```json
+// 응답 data
+{
+  "sessions": [
+    { "sessionId": 101, "sessionName": "오늘의 학습 - 병원", "createdAt": "2026-09-04T10:15:00", "aq": 67 },
+    { "sessionId": 100, "sessionName": "병원에서 진료받기", "createdAt": "2026-09-03T18:40:00", "aq": 72 }
+  ]
+}
+```
+
+- 조회 조건: **STATUS != COMPLETED_NO_TALK** (학습 중단 세션 미표시) + AQ NOT NULL
+- sessionName = LEARNING_SESSION.SESSION_NAME (today=`오늘의 학습 - {테마명}` / theme=시나리오명)
+- createdAt은 **ISO 타임스탬프** 전달 — 표현(YYYY.mm.dd)은 **클라 포맷** 책임 (포맷은 presentation 관심사 — 서버는 CREATED_AT 원시값만). aq는 "AQ nn점"으로 클라 포맷
+- 카드 터치 → 8.3 세부 보고서
+
+### 8.3 GET /api/v1/sessions/{sessionId}/report — 세부 보고서 (상세)
+
+```json
+// 응답 data
+{
+  "sessionId": 101, "aq": 67,
+  "totalFeedback": "전반적으로 좋은 흐름이었어요...",
+  "radar": { "listen": 80.0, "naming": 70.0, "shadowing": 85.0, "selfTalk": 55.0 },
+  "metricCards": [
+    { "type": "LISTEN", "score": 80.0, "feedback": "알아듣기 문제를 대부분 정확히 골랐어요.",
+      "turns": [
+        { "turnId": 501, "turnNumber": 1, "promptText": "사과를 고르세요",
+          "ttsUrl": "/api/v1/voice/101", "imageUrl": null,
+          "answer": { "mediaType": "text", "value": "2", "correct": true } }
+      ] }
+  ],
+  "talkFeedback": "자연스럽게 대화를 이어갔어요.",
+  "talkHistory": [
+    { "speaker": "AI", "text": "아까 문제 푸느라 고생했네요! 오늘 하루 어땐어요?", "ttsUrl": null },
+    { "speaker": "USER", "text": "오늘은 카페에 갔어요", "voiceUrl": "/api/v1/voice/205" }
+  ],
+  "reportViewedAt": "2026-09-04T15:20:00"
+}
+```
+
+- radar = **해당 세션 TURN.score 집계** (대표점수 아님 — 대시보드 8.1과 출처 구분)
+- metricCards[].turns — 문제 안내(prompt_text)·AI TTS(ttsUrl 재생)·내 답변(선택지 텍스트/그림 = selected_value, 음성 = voiceUrl)
+- LISTEN은 정답 여부(correct) 포함 / 음성형은 STT 텍스트(answer_text) 동봉 권장
+- talkHistory — AI 대화 피드백(talkFeedback) + 대화 내역(AI text + 내 답변 다시 듣기)
+- 응답 수신 시 백엔드가 **REPORT_VIEWED_AT 갱신** (null=미조회 판별 규약과 연동)
+- 학습 중단 세션(COMPLETED_NO_TALK)은 8.2 리스트에서 제외 — 8.3 직접 호출도 404 또는 빈 응답 처리
+
+## 9. 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
+
+
+| v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |

@@ -1,6 +1,6 @@
 # 백엔드 ↔ AI 컨테이너 API 명세서 (Spring Boot ↔ FastAPI — 실구현 기준)
 
-> **버전:** v1.0 (2026-09-04) — **실구현 DTO 역추적** (demo 브랜치, `dto/aicontainer/AiContainerDtos.kt` + `ai/AiContainerClient.kt` 실측)
+> **버전:** v1.7 (2026-09-04) — 실구현 DTO 역추적 + **컨테이너 협의 확정 (3·5·6·7) 반영** (demo 브랜치 실측 기반, 협의분은 구현 예정 상태 표기)
 > **용도:** AI 컨테이너(FastAPI) 구현자가 그대로 따라 할 수 있는 요청/응답 JSON 예시 집합.
 > 설계 계약 = `03_AI_Container_Contract.md` · 전환 가이드 = `05a_Client_API_Reference.md` §6
 > **JSON 키 네이밍은 본 문서가 단일 기준** — 백엔드 DTO의 `@JsonProperty` 그대로. 컨테이너는 이 키를 정확히 지켜야 함.
@@ -73,7 +73,7 @@
 | 키 | 타입 | 비고 |
 |----|------|------|
 | turnId | Int | 컨테이너 로컬 번호 |
-| type | String | 소문자: listen / naming / shadowing / selfTalk |
+| type | String | 소문자: listenText / listenPicture / naming / shadowing / selfTalk — **v1.4: LISTEN 세분화, 구 `listen` 폐지** |
 | context | String? | 문제 context — LISTEN: 지문 / NAMING: 정답단어 / SHADOWING: 원문 / SELF_TALK: 이미지 이름 |
 | userAnswer | String? | 유저 답변 (STT 텍스트). LISTEN은 선택 결과 |
 | score | BigDecimal? | 평가지표 점수 |
@@ -114,7 +114,7 @@
     { "imageId": 93, "imageName": "감자" }
   ],
   "userID": 1,
-  "userInfos": { "nickname": "노녹이", "likes": "카페, 산책", "sex": "M", "age": 27 },
+  "userInfos": { "nickname": "노녹이", "hobbies": "가끔 낚시 갈 정도", "tags": "등산, 골프", "sex": "M", "age": 27, "userMemory": "..." },
   "userAQ": 72
 }
 ```
@@ -128,9 +128,21 @@
 | imageListSelfTalk | Array | **IMAGE_TAG_PATH 보유 + SEMANTIC_CUE 없는 이미지** — SELF_TALK 전용 풀 (태그 채점용) |
 | userID | Long | ⚠️ `userID` — ID 대문자 |
 | userInfos | object | §1.1 |
-| userAQ | Int? | 유저 대표 AQ (최근 20세션 AQ 상위 10 평균). 세션 0개면 **null** |
+| userAQ | Int? | 유저 대표 AQ — **USER_REPRESENTATIVE_SCORES.USER_AQ 캐시 조회 전달** (대표점수 전용 테이블 — 가입 설문 초기 세팅 30/70/90 → AQ 확정 시점마다 재계산 갱신, v1.7). 백엔드 산정식 실행 없음 — 캐시 직접 조회. null 발생 없음 (설문 강제). 컨테이너는 null 수신 대비 예외처리 유지 권장 |
 
-> **이미지 풀 분할 규약 (v1.2, 구 imageList+namingImageIds 폐지):** 백엔드가 IMAGE_RESOURCE 데이터 기준으로 3개 풀로 분할해 전달 — 컨테이너는 각 타입 문제에 **해당 배열 내에서만** 이미지를 선택한다. 분류 규칙: `IMAGE_TAG_PATH 있음 = SELF_TALK` / `TAG_PATH 없음 + SEMANTIC_CUE 있음 = NAMING(+LISTEN 공용)` / `TAG_PATH 없음 + CUE 없음 = LISTEN`. NAMING/LISTEN 이미지는 LISTEN 선택지로 재사용 가능. **(구 v1.1의 namingImageIds/selfTalkImageIds 부분집합 필드는 폐지 — 3분할이 대체)**. 풀 부족 시 백엔드가 완화 로직 적용(전체 풀에 병합 + 로그 경고).
+**LISTEN 난이도 등급표 (v1.4 신설 — 03 계약서 §2.1 동일):**
+
+| 등급 | AQ 점수 범위 | 이미지 태그 | 선택지 개수 |
+|------|-------------|------------|------------|
+| 1 | AQ < 60 | EASY | 2 |
+| 2 | 60 ≤ AQ < 80 | EASY | 3 |
+| 3 | 80 ≤ AQ < 94 | EASY | 4 |
+| 4 | 94 ≤ AQ < 98 | HARD | 3 |
+| 5 | AQ ≥ 98 | HARD | 4 |
+
+> **v1.4 분담:** 백엔드 = userAQ → 등급 산정 → EASY/HARD 태그로 IMAGE_THEMA 조회 → imageListListening 필터링 전달. 컨테이너 = 등급에 맞는 선택지 개수로 options 구성 (등급표 컨테이너 보유 — 요청에 등급/개수 필드 없음). EASY=기존 태그(TEST/HOSPITAL/CAFE) / HARD=TEST_HARD·HOSPITAL_HARD·CAFE_HARD. EASY=사물 이미지 / HARD=행동·상황·사람 이미지.
+
+> **이미지 풀 분할 규약 (v1.2, v1.4 갱신 — 구 imageList+namingImageIds 폐지):** 백엔드가 IMAGE_RESOURCE 데이터 기준으로 3개 풀로 분할해 전달 — 컨테이너는 각 타입 문제에 **해당 배열 내에서만** 이미지를 선택한다. 분류 규칙: `IMAGE_TAG_PATH 있음 = SELF_TALK` / `TAG_PATH 없음 + SEMANTIC_CUE 있음 = NAMING` / `TAG_PATH 없음 + CUE 없음 = LISTEN`. **v1.4: NAMING은 EASY 이미지 전용** (사물 — HARD의 행동·상황·사람 이미지는 NAMING 불가). NAMING 이미지의 LISTEN 선택지 재사용은 등급 필터 통과분(imageListListening 배열) 내로 한정. imageListListening은 **userAQ 등급 기반 EASY/HARD 태그 필터 결과**만 전달. **(구 v1.1의 namingImageIds/selfTalkImageIds 부분집합 필드는 폐지 — 3분할이 대체)** 풀 부족 시 백엔드가 완화 로직 적용(전체 풀에 병합 + 로그 경고).
 
 ### 응답
 
@@ -140,7 +152,7 @@
   "userID": 1,
   "problemList": [
     {
-      "turnId": 1, "type": "listen",
+      "turnId": 1, "type": "listenPicture",
       "ttsPath": "{userUUID}/101/1_ai.mp3",
       "passage": "사과를 고르세요",
       "perType": {
@@ -148,7 +160,7 @@
         "options": [
           { "type": "text", "context": "8월 12일" },
           { "type": "image", "context": "88" },
-          { "type": "text", "context": "8월 20일" }
+          { "type": "image", "context": "90" }
         ]
       }
     },
@@ -170,7 +182,20 @@
       "passage": "다음 상황을 보고 묘사해보세요",
       "perType": { "image": 93 }
     }
-    // 총 8개 (각 타입 2회) — 무작위 순서
+    {
+      "turnId": 2, "type": "listenText",
+      "ttsPath": "{userUUID}/101/2_ai.mp3",
+      "passage": "오늘은 무슨 요일인가요?",
+      "perType": {
+        "correct": 0,
+        "options": [
+          { "type": "text", "context": "금요일" },
+          { "type": "text", "context": "토요일" },
+          { "type": "text", "context": "일요일" }
+        ]
+      }
+    }
+    // 이후 naming/shadowing/selfTalk 각 2회 — 총 8개 (LISTEN_TEXT·LISTEN_PICTURE 각 1회 포함), 무작위 순서
   ]
 }
 ```
@@ -179,14 +204,14 @@
 |----|------|------|
 | sessionId / userID | Long | 요청 값 그대로 (정합성) |
 | problemList[].turnId | Int | **로컬 번호 1~8** — DB PK 아님 |
-| problemList[].type | String | **소문자**: listen / naming / shadowing / selfTalk |
+| problemList[].type | String | **소문자**: listenText / listenPicture / naming / shadowing / selfTalk — **v1.4: LISTEN 세분화, 구 `listen` 폐지** |
 | problemList[].ttsPath | String | 공유폴더상 AI TTS 경로: `{userUUID}/{sessionID}/{로컬turnId}_ai.mp3`. 컨테이너가 이 경로에 mp3 파일을 **실제로 생성**해야 함. (스텁은 `stub/tts_{n}_ai.mp3` 더미 문자열 반환 — 실컨테이너는 실경로 + 실파일) |
 | problemList[].passage | String | TTS가 읽은 텍스트 = TURN.prompt_text |
-| perType | object? | listen: `correct`(정답 options 인덱스, Int) + `options` / naming: `correct`(정답 단어) / shadowing: **null** (지문=문제) / selfTalk: `image`(이미지 id) |
+| perType | object? | listenText·listenPicture: `correct`(정답 options 인덱스, Int) + `options` / naming: `correct`(정답 단어) / shadowing: **null** (지문=문제) / selfTalk: `image`(이미지 id) |
 
-**options 규약 (LISTEN):** 2~4개, 텍스트/이미지 혼합 가능. `type`: `text`(context=표시 텍스트) 또는 `image`(context=image_id 문자열). `correct`는 options 배열에서 정답의 **인덱스**.
+**options 규약 (LISTEN — v1.4):** listenText=텍스트형만 / listenPicture=이미지형만 (유형 고정, 혼합 폐지). 개수 2~4개 = 등급표(§2)에 따름. `type`: `text`(context=표시 텍스트) 또는 `image`(context=image_id 문자열). `correct`는 options 배열에서 정답의 **인덱스**.
 
-> LISTEN 채점은 컨테이너 호출 없음 — 백엔드가 correct만 받아 자체 채점(100/0). `/answer/listen`은 **존재하지 않음**.
+> LISTEN(listenText/listenPicture) 채점은 컨테이너 호출 없음 — 백엔드가 correct만 받아 자체 채점(100/0). `/answer/listen`은 **존재하지 않음**. listenText 선택지는 텍스트형 / listenPicture 선택지는 이미지형 — **유형 고정 (혼합 없음, v1.4)**.
 
 ## 3. POST /answer/naming — 이름대기 채점
 
@@ -211,7 +236,7 @@
 | problemContext | String | X | 정답 단어 (이미지 이름) |
 | userVoicePath | String | X | 공유폴더상 유저 음성 경로 |
 | hintCount | Int | X | 0~2 (의미→조음 순 공개 수) |
-| userRT | BigDecimal | **O** | 유저 평균 RT — 최근 naming 음성 20개 중 발화시간/음절수 최단 10개의 (발화시간 총합 ÷ 음절수 총합). 백엔드 산정. **0개면 null** |
+| userRT | BigDecimal | X | 유저 평균 RT — 최근 naming 음성 20개 중 발화시간/음절수 최단 10개의 (발화시간 총합 ÷ 음절수 총합). 백엔드 산정. **0개(첫 사용 유저)면 `0` 전송 — v1.4: 구 null 전송 폐지.** 컨테이너는 0 수신 시 이번 녹음 결과를 평균으로 간주 (예외처리 확정) |
 
 ### 응답
 
@@ -239,9 +264,17 @@
   "sessionID": 101,
   "userID": 1,
   "problemContext": "나는 오늘 아침에 병원에 갔습니다",
-  "userVoicePath": "shared/1/101/503_user.m4a"
+  "userVoicePath": "shared/1/101/503_user.m4a",
+  "articulationRate": 6.67
 }
 ```
+
+| 키 | 타입 | nullable | 비고 |
+|----|------|----------|------|
+| sessionID / userID | Long | X | ⚠️ `sessionID` — ID 대문자 |
+| problemContext | String | X | 정답 확인용 — 원문 구문 |
+| userVoicePath | String | X | 공유폴더상 유저 음성 경로 |
+| articulationRate | BigDecimal | X | **유저 개인 조음속도 (v1.4 신설)** — 최근 문제풀이(NAMING/SHADOWING/SELF_TALK) 유저 음성 중 SYLLABLES NOT NULL·ARTICULATION_TIME > 0인 것 20개 중 조음속도(`ARTICULATION_TIME÷SYLLABLES`) 최단(=가장 빠른) 10개의 (SYLLABLES 총합 ÷ ARTICULATION_TIME 총합). 백엔드 산정, **소수 2자리**. **0개(첫 사용 유저)면 `0` 전송** — 컨테이너는 0 수신 시 이번 녹음 결과를 평균으로 간주 (예외처리 확정). 명칭은 팀원 전달본 그대로 — `user` 접두 없음 (userRT와 다름) |
 
 ### 응답
 
@@ -304,9 +337,9 @@
 {
   "sessionID": 101,
   "userID": 1,
-  "userInfos": { "nickname": "노녹이", "likes": "카페, 산책", "sex": "M", "age": 27 },
+  "userInfos": { "nickname": "노녹이", "hobbies": "가끔 낚시 갈 정도", "tags": "등산, 골프", "sex": "M", "age": 27, "userMemory": "..." },
   "turnResults": [
-    { "turnId": 1, "type": "listen",   "context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
+    { "turnId": 1, "type": "listenText","context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
     { "turnId": 2, "type": "naming",   "context": "포도", "userAnswer": "포도!", "score": 82.0 },
     { "turnId": 3, "type": "shadowing","context": "나는 오늘 아침에 병원에 갔습니다", "userAnswer": "나는 오늘 아침에 병원에 갔습니다", "score": 86.0 },
     { "turnId": 4, "type": "selfTalk", "context": "감자", "userAnswer": "감자는 뿌리 채소예요", "score": 55.0 }
@@ -372,7 +405,7 @@
   "sessionID": 101,
   "userID": 1,
   "turns": [
-    { "turnId": 1, "type": "listen",    "context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
+    { "turnId": 1, "type": "listenText","context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
     { "turnId": 2, "type": "naming",    "context": "포도", "userAnswer": "포도!", "score": 82.0 },
     { "turnId": 3, "type": "shadowing", "context": "나는 오늘 아침에 병원에 갔습니다", "userAnswer": "...", "score": 86.0 },
     { "turnId": 4, "type": "selfTalk",  "context": "감자", "userAnswer": "...", "score": 55.0 }
@@ -406,9 +439,9 @@
 
 > **AQ 산정 시점 변경 (v1.2):** 구 설계는 세션 종료 시점에 AQ 포함 전체 리포트 1회. 현재는 `/report/problems`에서 AQ 확정 → 이야기 턴 진행 중 간이 보고서 완성 → 종료 후 상세 피드백만 추가.
 
-### 7.2 POST /report/total — 상세 보고서 (세션 종료/조기종료 시점)
+### 7.2 POST /report/total — 상세 보고서 (세션 종료/학습 완료 판정 시점)
 
-**트리거:** AI 대화 종료(정상·하드캡) 또는 이야기 턴 중 조기종료 시점 — 백엔드가 1회 호출. 응답 수신까지 클라는 대기하지 않음 (백그라운드 생성 → 완료 후 앱 내 알림). 스텁 지연 **10초** (실컨테이너 추론 시간 감안).
+**트리거:** AI 대화 종료(정상·하드캡) 또는 **학습 완료 판정(유저 4턴째 답변 이후) 중단** 시점 — 백엔드가 1회 호출. **학습 중단(이야기 1~3턴)은 호출하지 않음** (하단 판정 규약). 응답 수신까지 클라는 대기하지 않음 (백그라운드 생성 → 완료 후 앱 내 알림). 스텁 지연 **10초** (실컨테이너 추론 시간 감안).
 
 #### 요청
 
@@ -418,7 +451,7 @@
   "userID": 1,
   "userMemory": "{기존 누적 userMemory 오파크 텍스트 — 첫 세션이면 null}",
   "turns": [
-    { "turnId": 1, "type": "listen",    "context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
+    { "turnId": 1, "type": "listenText","context": "사과를 고르세요", "userAnswer": "사과", "score": 100.0 },
     { "turnId": 2, "type": "naming",    "context": "포도", "userAnswer": "포도!", "score": 82.0 }
     // 문제풀이 8턴
   ],
@@ -435,7 +468,7 @@
 |----|------|
 | userMemory | **기존 누적 메모리** (v1.3 신규) — 갱신 기준값. 첫 세션/기존 없으면 `null` |
 | turns | 문제풀이 8턴 (이야기 턴은 여기 미포함 — 대화는 talkContext로 별도 전달) |
-| talkContext | chatMessage 배열 — 이야기 턴 전체 대화 로그. **조기종료로 이야기 없이 끝난 세션은 빈 배열** |
+| talkContext | chatMessage 배열 — 이야기 턴 대화 로그. **학습 완료 판정(4턴째 답변 이후 중단) 시 유저 4턴째 답변까지만 포함** — AI 응답 생성 중이어도 유저 답변까지만 |
 
 #### 응답
 
@@ -460,7 +493,7 @@
 | userMemory | **갱신된 누적 메모리** (v1.3 신규) — 요청의 기존 값 + 이번 talkContext 기반으로 갱신한 결과. DB `USER_PROFILE.USER_MEMORY` 적재. 규약(§10): 갱신할 소득이 없으면 **요청 값과 동일하게 반환**(변경 없음), 실패·누락 시 백엔드는 **기존 값 유지**(데이터 소실 방지). 민감정보 저장 금지(프롬프트 통제, 발표 언급용) |
 | sessionFeedbacks | **talkFeedback/totalFeedback만 non-null** — 나머지 4종은 이미 7.1에서 적재됐으므로 null (백엔드는 null 필드 무시하고 2컬럼만 UPDATE) |
 
-> **조기종료(이야기 턴 없이 종료) 규약:** 세션 STATUS에 전용 값 기록 (예: `COMPLETED_NO_TALK`) — 클라는 "AI 대화를 진행하지 않아 대화 피드백이 없어요" 표시. `/report/total`은 **호출하지 않음** (talkFeedback/totalFeedback은 NULL로 유지).
+> **학습 중단/완료 판정 규약 (v1.6 갱신):** 학습 중단(이야기 1~3턴 중 중단) = `/report/total` **미호출** — 상세 보고서 생성 안 함(간이 보고서는 DB 저장하나 유저 미표시·기록탭 미표시). 학습 완료(유저 4턴째 답변 이후 중단/마치기) = **호출** — talkContext에 유저 4턴째 답변까지만 포함(AI 응답 생성 중이어도 유저 답변까지만). 8턴 하드캡 = 유저 8턴 답변 후 AI 마무리 응답(9번째)까지 포함. STATUS: 중단=`COMPLETED_NO_TALK`, 완료·하드캡=`COMPLETED`.
 
 ### 7.3 DB 저장 흐름 (2단계)
 
@@ -491,7 +524,11 @@
 | 응답 지연 | Thread.sleep 2~3s 등 시뮬레이션 | 실제 추론 시간 (LLM=Ollama Cloud, STT=로컬 Whisper, TTS=로컬 Qwen) |
 | ttsPath | `stub/tts_{n}_ai.mp3` 더미 | 공유폴더 실경로 + 실제 mp3 생성 |
 | 세션 출제 | `/sessions/today`만 호출 (무작위) | today=무작위 / theme=기획 시나리오 플로우 (엔드포인트 분기 v1.2) |
-| NAMING 정답 | imageList의 imageName 그대로 → **v1.2: imageListNaming 배열의 imageName** | 컨테이너가 이미지 선택 + 정답 단어 결정 |
+| LISTEN 세분화 | `listen` 단일 타입 (텍스트 선택지 위주) → **v1.4: listenText/listenPicture로 세분화 — 스텁 미반영, 구현 예정** | listenText=개인화 활용 가능·listenPicture=imageListListening 내 이미지 선택지 (각 1회 포함) |
+| LISTEN 선택지 개수 | 고정 → **v1.4: userAQ 등급표(§2) 기반 2~4개 — 스텁 미반영** | 등급표에 따른 개수 (등급표 컨테이너 보유) |
+| NAMING 정답 | imageList의 imageName 그대로 → **v1.2: imageListNaming 배열의 imageName** | 컨테이너가 이미지 선택 + 정답 단어 결정 (EASY 이미지 전용 — v1.4) |
+| userRT | 과거 기록 없으면 null → **v1.4: 0 전송으로 변경 — 스텁 미반영, 구현 예정** | 첫 사용(0 수신) 시 이번 녹음을 평균으로 간주하는 예외처리 |
+| articulationRate | 요청 미전송 → **v1.4 신설 — 스텁 미반영, 구현 예정** | 첫 사용(0 수신) 시 이번 녹음을 평균으로 간주 |
 | userText | null (B-2에서 더미 예정) → **✅ B-2 완료: 음성 턴 더미 STT 반환, 첫 호출 null 유지** | 이번 턴 음성의 실제 STT 결과 |
 | 점수 | 유사도 시뮬레이션 60~95 + 감점 | 실제 채점 알고리즘 (루브릭 컨테이너 내부) |
 | 리포트 | 고정 문구 + AQ 55~85 → **v1.2: 2단계 분리 — problems(AQ+4지표, 2~3s) / total(talk+total, 10s)** | 실제 AQ 산정 + 개인화 피드백 (동일 2단계) |
@@ -502,7 +539,7 @@
 
 > **개념:** AI 자유대화(STORYTELLING)에서 얻은 유저 개인 맥락을 누적 관리해, 다음 세션의 문제 출제·대화 개시·자유대화에 활용하는 개인화 레이어. **에이전트 메모리 패턴** — 컨테이너(LLM)가 읽고 갱신하고, 백엔드는 저장소로만 동작한다.
 
-### 11.1 라이프사이클
+### 10.1 라이프사이클
 
 ```
 [저장] USER_PROFILE.USER_MEMORY CLOB nullable (하드캡 8KB — 백엔드 방어용)
@@ -517,7 +554,7 @@
 [파기] 회원탈퇴 — USER_PROFILE 삭제에 자동 포함 (B-1 FK 역순 삭제 흐름)
 ```
 
-### 11.2 백엔드 책임 경계
+### 10.2 백엔드 책임 경계
 
 | 항목 | 백엔드 | 컨테이너(LLM 팀) |
 |------|--------|------------------|
@@ -527,7 +564,7 @@
 | 민감정보 | — | 프롬프트 레벨 통제 (§10.3) — 기술적 제약은 별도 검토 과제 |
 | 파기 | 회원탈퇴 시 행 삭제 | — |
 
-### 11.3 내용 규약 (컨테이너 프롬프트에 주입할 지침 — LLM 팀 가이드라인)
+### 10.3 내용 규약 (컨테이너 프롬프트에 주입할 지침 — LLM 팀 가이드라인)
 
 | 항목 | 규약 |
 |------|------|
@@ -545,5 +582,9 @@
 |------|------|------|
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 DTO(`AiContainerDtos.kt`) 역추적. 엔드포인트별 전체 JSON 예시 포함. 스텁/실컨테이너 차이 표 (§9) |
 | v1.1 | 2026-09-03 | B-2/B-3 반영 — §2 요청에 namingImageIds/selfTalkImageIds 선택 필드 추가(백엔드 조건 필터+완화 규약), §6 스텁 userText 더미 STT 수정 완료 표기, §9 차이표 갱신 |
-| v1.2 | 2026-09-04 | **컨테이너 협의 반영 (1):** §2 엔드포인트 분기 — `/sessions/today`(테마 랜덤+문제 무작위) / `/sessions/theme`(기획 시나리오 플로우), 요청·응답 필드 공통. **imageList 3분할** — imageListListening/Naming/SelfTalk (분류: TAG_PATH 있음=SELF_TALK, TAG 없음+CUE 있음=NAMING(+LISTEN 공용), 둘 다 없음=LISTEN). 구 namingImageIds/selfTalkImageIds 폐지. §7 리포트 2단계 분리 — `/report/problems`(8턴 종료, AQ+4지표, 2~3s) / `/report/total`(종료, talk+total, 10s) + 조기종료 COMPLETED_NO_TALK 규약 + §7.3 DB 저장 흐름 |
+| v1.2 | 2026-09-04 | **컨테이너 협의 반영 (1):** §2 엔드포인트 분기 — `/sessions/today`(테마 랜덤+무작위 출제) / `/sessions/theme`(기획 시나리오 플로우), 요청·응답 필드 공통. **imageList 3분할** — imageListListening/Naming/SelfTalk (분류: TAG_PATH 있음=SELF_TALK, TAG 없음+CUE 있음=NAMING(+LISTEN 공용), 둘 다 없음=LISTEN). 구 namingImageIds/selfTalkImageIds 폐지. §7 리포트 2단계 분리 — `/report/problems`(8턴 종료, AQ+4지표, 2~3s) / `/report/total`(종료, talk+total, 10s) + 조기종료 COMPLETED_NO_TALK 규약 + §7.3 DB 저장 흐름 |
+
+
+
+| v1.7 | 2026-09-04 | **컨테이너 협의 확정 (7) — 대표점수 테이블 이동:** §2 userAQ 출처 갱신 — USER_PROFILE → USER_REPRESENTATIVE_SCORES (대표점수 5종 통합). 컨테이너 입장 변화 없음 |
 | v1.3 | 2026-09-04 | **컨테이너 협의 반영 (2) — userMemory 개인화:** §1.1 userInfos 개편 — `userMemory` 신설, `likes`→`hobbies` rename, `tags` 신설(선택 태그 최대 5개, 쉼표 문자열), age=BIRTH_DATE 기반 산정. §7.2 /report/total — 요청에 기존 `userMemory` 추가, 응답에 **갱신된 `userMemory`** 추가(변경 없으면 동일값 반환, 실패 시 기존 유지). **§10 신설** — userMemory 라이프사이클/책임 경계/내용 규약(민감정보 저장 금지 — 프롬프트 통제). 백엔드는 오파크 CLOB 저장소(USER_PROFILE.USER_MEMORY, 하드캡 8KB) |

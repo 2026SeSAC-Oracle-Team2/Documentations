@@ -1,6 +1,6 @@
 # 데이터베이스 설계서 (Database Design Document)
 
-> **버전:** v2.0 (2026-09-02 현행화 — 전면 리라이트)
+> **버전:** v2.6 (2026-09-04 현행화)
 > **기준:** LIVE DB (부트캠프 VM, Oracle XE 21c, PDB=XEPDB1) + 확정 기획
 > **관련:** 세션/기획 = `06_Session_Flow_Spec.md` · 계약 = `03_AI_Container_Contract.md`
 > **ADR:** ADR-003(리스너 자체채점) / ADR-004(힌트 DB화) / ADR-007(TURN.status) / ADR-008(REPORT 폐지) / ADR-010(발화지표 rename)
@@ -11,7 +11,7 @@
 
 | 스키마 | 도메인 | 테이블 |
 |--------|--------|--------|
-| `SPEECHAPP_USER` | 사용자 + 학습 | APP_USER, USER_PROFILE, **TAGS, USER_PROFILE_TAGS**(v2.2), CONTENT_TYPE, LEARNING_SESSION, TURN, TURN_IMAGE, VOICE_RECORD |
+| `SPEECHAPP_USER` | 사용자 + 학습 | APP_USER, USER_PROFILE, **TAGS, USER_PROFILE_TAGS**(v2.2), **USER_REPRESENTATIVE_SCORES**(v2.6), CONTENT_TYPE, LEARNING_SESSION, TURN, TURN_IMAGE, VOICE_RECORD |
 | `SPEECHAPP_CONTENT` | 콘텐츠 | IMAGE_RESOURCE, IMAGE_THEMA |
 
 ## 2. DB 사용자 계정
@@ -29,7 +29,7 @@
 
 ```
 SPEECHAPP_USER
-  APP_USER (id PK) 1──1 USER_PROFILE (user_id FK, UNIQUE: profile_image/nickname/hobbies/sex/birth_date/user_memory)
+  APP_USER (id PK) 1──1 USER_PROFILE (user_id FK, UNIQUE: profile_image/nickname/hobbies/sex/birth_date/user_memory) 1──1 USER_REPRESENTATIVE_SCORES (user_id FK UNIQUE: user_aq/user_score_listen/user_score_naming/user_score_shadowing/user_score_self_talk)
   APP_USER 1──N USER_PROFILE_TAGS N──1 TAGS (관심사 태그, 최대 5개/유저)
   APP_USER 1──N LEARNING_SESSION (user_id FK)
   LEARNING_SESSION 1──N TURN (session_id FK)
@@ -72,6 +72,7 @@ SPEECHAPP_CONTENT
 | `CREATED_AT` / `UPDATED_AT` | TIMESTAMP | NOT NULL | |
 
 > **v2.2 (2026-09-04, 컨테이너 협의):** `LIKES`→`HOBBIES` rename, `AGE`(NUMBER) 폐지 → `BIRTH_DATE`(DATE) 신설 — 나이 산정식 변경(백엔드), **`USER_MEMORY` CLOB 신설**. 구 3종 컬럼 설명(2026-09-02) 대체. JPA Entity(UserProfile.kt) 동기화 필요.
+> **v2.6 (2026-09-04, 컨테이너 협의 5→7):** **대표점수를 USER_PROFILE에서 `USER_REPRESENTATIVE_SCORES` 전용 테이블로 이동** (§4.2.2 — USER_PROFILE 비대화 방지: 대표점수는 실력 데이터라 프로필 도메인·갱신 주기가 다름). 캐시 5종(AQ+4지표) 통합 저장 — AQ만 프로필에 두고 4지표가 분리되면 값이 찢어지는 문제 회피. 갱신 지점 고정(설문 접수 + /report/problems 수신)이라 정합성 논리는 v2.5와 동일. /sessions userAQ 전달은 USER_PROFILE LEFT JOIN 1개 추가 (여전히 단일 왕복). 대안 기각 이력: ① SURVEY_AQ+USER_AQ 2컬럼 ② LEARNING_SESSION 가짜 레코드. ⚠️ 마이그레이션 시 기존 세션 보유 계정 백필 필요(재노출 오검출 방지)
 
 ### 4.2.1 TAGS / USER_PROFILE_TAGS (관심사 태그 — v2.2 신설)
 
@@ -84,15 +85,31 @@ SPEECHAPP_CONTENT
 
 > 컨테이너 전달 시: 선택 태그를 쉼표 구분 문자열(`"등산, 골프, 요리"`)로 조립해 userInfos.tags로 통째 전달 (03a §1.1). TAGS 시드는 init SQL 02번에 포함 — LIVE DB 마이그레이션 필요.
 
+### 4.2.2 USER_REPRESENTATIVE_SCORES (대표점수 캐시 — v2.6 신설)
+
+> 대표점수 5종(AQ+4지표)의 캐시 테이블. 대시보드 방사형 그래프 + /sessions userAQ 전달용.
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| `USER_ID` | NUMBER(19) | PK, UNIQUE, FK→user_profile.user_id | 1:1 |
+| `USER_AQ` | NUMBER(3) | nullable, CHECK(0~100) | **유저 대표 AQ** — 가입 설문 환산값(30/70/90) 초기 세팅 → /report/problems 수신 시점마다 ADR-009 식 재계산 UPDATE. **null = 설문 미응답** (설문 재노출 판별 기준) |
+| `USER_SCORE_LISTEN` | NUMBER(5,2) | nullable | 대표 지표점수 — LISTEN_TEXT/LISTEN_PICTURE **통합** (지표상 동일 LISTEN). ADR-009 식: 최근 20세션 중 상위 10개 세션 평균 |
+| `USER_SCORE_NAMING` | NUMBER(5,2) | nullable | 동일식 |
+| `USER_SCORE_SHADOWING` | NUMBER(5,2) | nullable | 동일식 |
+| `USER_SCORE_SELF_TALK` | NUMBER(5,2) | nullable | 동일식 |
+| `UPDATED_AT` | TIMESTAMP | NOT NULL | |
+
+> **갱신 지점 2곳 고정 (정합성):** ① 가입 설문 접수 — USER_AQ 초기 세팅(30/70/90) ② /report/problems 수신 — AQ+4지표 재계산 UPDATE. /sessions 요청 시 USER_PROFILE LEFT JOIN으로 userAQ 조회(단일 왕복). **방사형 그래프 출처 구분: 대시보드 = 이 테이블 / 세부 보고서 = 해당 세션 TURN.score 집계.**
+
 ### 4.3 CONTENT_TYPE (컨텐츠 타입 룩업)
 
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
-| `TYPE_CODE` | VARCHAR2(20) PK (자연키) | LISTEN / NAMING / SHADOWING / SELF_TALK / STORYTELLING |
-| `TYPE_NAME` | VARCHAR2(50) | 듣기 / 이름 맞추기 / 쉐도잉 / 자기 대화 / 스토리텔링 |
+| `TYPE_CODE` | VARCHAR2(20) PK (자연키) | LISTEN_TEXT / LISTEN_PICTURE / NAMING / SHADOWING / SELF_TALK / STORYTELLING — **v2.3: LISTEN 세분화** (구 LISTEN 폐지 — 다시보기 구분·난이도 운영용) |
+| `TYPE_NAME` | VARCHAR2(50) | 듣기(텍스트) / 듣기(그림) / 이름 맞추기 / 쉐도잉 / 자기 대화 / 스토리텔링 |
 | `CATEGORY` | VARCHAR2(50) | receptive / productive (기획상 A=채점 4종, B=무채점 1종) |
 
-> TURN의 CHECK 제약이 5종 코드를 강제. STORYTELLING은 채점 없음 — `TURN.score` 항상 NULL.
+> TURN의 CHECK 제약이 6종 코드를 강제 (v2.3: LISTEN → LISTEN_TEXT/LISTEN_PICTURE). STORYTELLING은 채점 없음 — `TURN.score` 항상 NULL. LISTEN_TEXT/LISTEN_PICTURE는 지표상 모두 LISTEN (운영 구분용 — 채점 방식 동일, 백엔드 자체 100/0).
 
 ### 4.4 LEARNING_SESSION (학습 세션)
 
@@ -103,6 +120,8 @@ SPEECHAPP_CONTENT
 | `ID` | NUMBER(19) | PK, **SESSION_SEQ** | |
 | `USER_ID` | NUMBER(19) | NOT NULL, FK→app_user | |
 | `THEME` | VARCHAR2(30) | | 서버 랜덤 선택 (TEST/HOSPITAL/CAFE) |
+| `SESSION_NAME` 🆕 (v2.6) | VARCHAR2(100) | | **세션 표시명** — 학습 기록 카드용. today=`오늘의 학습 - {테마명}` / theme=`병원에서 진료받기`·`동네카페에서`(시나리오 플로우 고정 시퀀스 — 컨텐츠 팀 확정분) |
+
 | `TYPE` 🆕 (v1.3) | VARCHAR2(20) | | 세션 종류 — `today`(오늘의 학습: 테마 랜덤+무작위 출제) / `theme`(테마별 학습: 기획 시나리오 플로우). 컨테이너 엔드포인트 분기(/sessions/today vs theme)와 매핑 |
 | `STATUS` | VARCHAR2(20) | DEFAULT 'IN_PROGRESS' | IN_PROGRESS / COMPLETED / **COMPLETED_NO_TALK**(이야기 턴 없이 조기종료 — talk/total 피드백 NULL 유지, v1.3) |
 | `AQ` | NUMBER(3) | nullable, CHECK(0~100) | **세션 총점** — 8문제 점수만으로 산출 (AI 대화 미포함, v1.3 확정). /report/problems 시점에 적재. 리포트 전 NULL |
@@ -124,10 +143,10 @@ SPEECHAPP_CONTENT
 | `ID` | NUMBER(19) | PK, TURN_SEQ | |
 | `SESSION_ID` | NUMBER(19) | NOT NULL, FK→learning_session | |
 | `TURN_NUMBER` | NUMBER(5) | NOT NULL | 세션 내 순서 |
-| `CONTENT_TYPE` | VARCHAR2(20) | NOT NULL, FK→content_type, CHECK IN 5종 | |
+| `CONTENT_TYPE` | VARCHAR2(20) | NOT NULL, FK→content_type, CHECK IN 6종 | |
 | `STATUS` 🆕 | VARCHAR2(20) | | **PENDING**(출제·미풀이) / **SUBMITTED**(답안 제출) / **SCORED**(채점 완료) |
 | `PROMPT_TEXT` | CLOB | | AI 제시 텍스트 (TTS 지문 / STORYTELLING AI 발화) |
-| `CHOICES_JSON` | CLOB | LISTEN 필수 | `[{order, media_type: IMAGE\|TEXT, ref}]` |
+| `CHOICES_JSON` | CLOB | LISTEN_TEXT·LISTEN_PICTURE 필수 | `[{order, media_type: TEXT\|IMAGE, ref}]` — **v2.3: 유형별 고정** (LISTEN_TEXT=TEXT만, LISTEN_PICTURE=IMAGE만 — 혼합 폐지) |
 | `CORRECT_VALUE` | VARCHAR2(255) | LISTEN·NAMING 필수 | LISTEN=정답 choice ref / NAMING=정답 단어 / SHADOWING=원문 / SELF_TALK=**NULL** |
 | `SELECTED_VALUE` | VARCHAR2(255) | | LISTEN=유저가 탭한 choice ref, 그 외 NULL |
 | `ANSWER_TEXT` | CLOB | | 유저 발화 STT (NAMING/SHADOWING/SELF_TALK/STORYTELLING) |
@@ -135,13 +154,14 @@ SPEECHAPP_CONTENT
 | `SCORE` (v1.95 추가) | NUMBER(5,2) | nullable, 0~100 | **평가지표 채점 결과** — STORYTELLING 항상 NULL |
 | `CREATED_AT` | TIMESTAMP | NOT NULL | |
 
-**CHECK 제약:** LISTEN → choices_json·correct_value NOT NULL / NAMING → correct_value NOT NULL.
+**CHECK 제약:** LISTEN_TEXT·LISTEN_PICTURE → choices_json·correct_value NOT NULL / NAMING → correct_value NOT NULL.
 
 **타입별 컬럼 사용 규격:**
 
 | 타입 | prompt_text | choices_json | correct_value | selected_value | answer_text |
 |------|-------------|--------------|---------------|----------------|-------------|
-| LISTEN | TTS 지문 | 선택지 2~4개 | 정답 ref | 유저 선택 ref | — (탭 선택) |
+| LISTEN_TEXT | TTS 지문 | 텍스트 선택지 2~4개 (등급별) | 정답 ref | 유저 선택 ref | — (탭 선택) |
+| LISTEN_PICTURE | TTS 지문 | 이미지 선택지 2~4개 (등급별) | 정답 ref | 유저 선택 ref | — (탭 선택) |
 | NAMING | (출제 멘트) | — | 정답 단어 | NULL | STT 발화 |
 | SHADOWING | 원문 구문 | — | 원문 | NULL | STT 발화 |
 | SELF_TALK | (출제 멘트) | — | NULL | NULL | STT 발화 |
@@ -198,10 +218,12 @@ SPEECHAPP_CONTENT
 |------|------|------|------|
 | `ID` | NUMBER(19) | PK, IDENTITY | |
 | `IMAGE_ID` | NUMBER(19) | NOT NULL, FK→image_resource | |
-| `THEMA_KEY` | VARCHAR2(30) | CHECK IN('TEST','HOSPITAL','CAFE') | |
+| `THEMA_KEY` | VARCHAR2(30) | CHECK IN('TEST','HOSPITAL','CAFE','TEST_HARD','HOSPITAL_HARD','CAFE_HARD') — **v2.3: HARD 태그 3종 추가** (LISTEN 난이도 운영용) | |
 | | | UNIQUE(image_id, thema_key) | 한 이미지가 여러 테마에 속할 수 있음 |
 
 > 세션 테마가 랜덤 결정되면 이 테이블로 해당 테마의 사용 가능한 이미지 풀을 조회 → `/sessions`의 `imageList` 전달. 룩업 테이블 없이 key 문자열 방식 (CONTENT_TYPE 선례).
+>
+> **v2.3 난이도 운영:** 기존 태그(TEST/HOSPITAL/CAFE) = **EASY** 역할 (사물 이미지) / `_HARD` 태그 3종 = **HARD** (행동이 포함된 상황·사람 이미지). 백엔드가 세션 생성 시 userAQ로 등급 산정(03 계약서 §2.1) → 해당 난이도 태그로 이미지 풀 조회 → imageListListening 필터링. **NAMING은 EASY 이미지 전용** — HARD 이미지는 NAMING 출제 불가.
 
 ---
 
@@ -242,6 +264,8 @@ SPEECHAPP_CONTENT
 | 태그 보유 이미지 | tag 레코드 존재 — tags.json 관련 로직 수정 시 데이터 보존 유의 |
 | hint.json | 보유 레코드 0건 — SEMANTIC/ARTICULATORY_CUE 전환 시 마이그레이션 불필요 |
 | VOICE_RECORD rename | 값 있는 레코드 0건 — rename 무부담 |
+| LISTEN 세분화 (v2.3) | 기존 TURN CONTENT_TYPE=LISTEN 행 → **LISTEN_TEXT UPDATE** (기존 스텁은 텍스트 선택지 반환). CONTENT_TYPE 룩업 seed 갱신 + TURN CHECK 제약 재생성 + IMAGE_THEMA CHECK 확장 필요 |
+| USER_REPRESENTATIVE_SCORES 백필 (v2.6) | 기존 세션 보유 계정: USER_AQ·4지표를 기존 LEARNING_SESSION/TURN 집계로 **백필** — 미백필 시 설문 재노출 오검출(null=미응답 판별) |
 | 콘텐츠 시딩 | 관리자 페이지로 (이미지 필수 + 태그 JSON 선택) |
 
 ## 9. 미구현 (채점 확정 후 대기)
@@ -249,7 +273,7 @@ SPEECHAPP_CONTENT
 | 항목 | 상태 |
 |------|------|
 | `TURN.score` 저장 로직 (백엔드) | 계약 구현과 함께 |
-| 유저 수준/대시보드 집계 쿼리 | 실력 산정식 확정으로 구현 가능 |
+| 유저 수준/대시보드 집계 쿼리 | 실력 산정식 확정으로 구현 가능 — **USER_REPRESENTATIVE_SCORES 캐시(v2.6)로 대시보드 조회는 단순 SELECT로 전환** |
 | init SQL 05번 → 현행 기준 동기화 | DB 세션 작업 |
 
 ## 10. 변경 이력
@@ -257,6 +281,10 @@ SPEECHAPP_CONTENT
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v2.0 | 2026-09-02 | **전면 리라이트** — 폐지 테이블/이력 제거, 현행 스키마만 기술. DB 수정 확정사항 반영: IMAGE_RESOURCE cue 2컬럼(IMAGE_HINT_PATH 폐지), LEARNING_SESSION AQ+피드백 6컬럼, VOICE_RECORD rename(SPEAKING_TIME/ARTICULATION_TIME), USER_PROFILE likes/sex/age, TURN.status. OCI hint.json 규약 폐지 |
-| v2.2 | 2026-09-04 | **컨테이너 협의 반영 (2) — 개인화 데이터 개편:** USER_PROFILE — LIKES→HOBBIES rename, AGE 폐지→BIRTH_DATE(DATE) 신설, USER_MEMORY(CLOB nullable, 오파크 — /report/total에서 갱신, 8KB 하드캡) 신설. TAGS(15종 시드)+USER_PROFILE_TAGS(최대 5개) 정규화 신설. ERD 갱신 필요 — SPEECHAPP_USER 테이블 7→9종. LIVE DB 마이그레이션 + init SQL 02번 갱신 + JPA 동기화는 후속 DB 작업 |
+| v2.3 | 2026-09-04 | **컨테이너 협의 확정 (3) — LISTEN 세분화 + 난이도 태그:** (1) CONTENT_TYPE 세분화 — LISTEN 폐지 → **LISTEN_TEXT/LISTEN_PICTURE** (지표상 동일 LISTEN, 운영 구분용 — 다시보기·난이도). TURN CHECK 5→6종, choices_json 유형별 고정(LISTEN_TEXT=TEXT만/LISTEN_PICTURE=IMAGE만). 기존 LISTEN TURN 행은 LISTEN_TEXT UPDATE. (2) IMAGE_THEMA.THEMA_KEY CHECK 확장 — **HARD 태그 3종 추가**(TEST_HARD/HOSPITAL_HARD/CAFE_HARD; 기존 3종=EASY 역할, 사물 vs 행동·상황·사람). (3) imageListListening = userAQ 등급(03 §2.1) 기반 태그 필터 결과. NAMING=EASY 이미지 전용. LIVE DB 마이그레이션(룩업 seed·TURN CHECK·IMAGE_THEMA CHECK·기존 행 UPDATE)은 후속 DB 작업 |
+
+
+
+| v2.6 | 2026-09-04 | **컨테이너 협의 확정 (7) — 대시보드 실구현 설계:** (1) **USER_REPRESENTATIVE_SCORES 신설(§4.2.2)** — USER_PROFILE.USER_AQ(안) 포함 대표점수 5종 이동. LISTEN=TEXT/PICTURE 통합. 갱신 지점 2곳 고정(설문 접수+/report/problems 수신). /sessions userAQ=LEFT JOIN. ⚠️ 기존 계정 백필 필요. (2) LEARNING_SESSION **SESSION_NAME** 신설 — 카드 표시명(today=`오늘의 학습 - {테마명}`, theme=시나리오명). (3) 방사형 출처 구분 — 대시보드=대표점수 / 세부 보고서=해당 세션 TURN.score 집계. (4) 학습 기록·세부 보고서 조회 STATUS != COMPLETED_NO_TALK (학습 중단 미표시) |
 | v2.1 | 2026-09-04 | **컨테이너 협의 반영 (1) — 리포트 2단계 + 세션 분기:** LEARNING_SESSION에 `TYPE`(today/theme — 컨테이너 엔드포인트 분기 매핑), `REPORT_VIEWED_AT`(상세 보고서 조회 시각, null=미조회 — 알림/버블 판별) 신설. STATUS에 `COMPLETED_NO_TALK` 추가(이야기 없이 조기종료 — /report/total 미호출, talk/total 피드백 NULL 유지). AQ 산정 시점 확정 = /report/problems(8문제만). 피드백 적재 2단계화(4지표=problems, talk/total=total). LIVE DB 마이그레이션은 후속 DB 작업(init SQL 05번 갱신 포함) | **컨테이너 협의 반영 (1) — 리포트 2단계 + 세션 분기:** LEARNING_SESSION에 `TYPE`(today/theme — 컨테이너 엔드포인트 분기 매핑), `REPORT_VIEWED_AT`(상세 보고서 조회 시각, null=미조회 — 알림/버블 판별) 신설. STATUS에 `COMPLETED_NO_TALK` 추가(이야기 없이 조기종료 — /report/total 미호출, talk/total 피드백 NULL 유지). AQ 산정 시점 확정 = /report/problems(8문제만). 피드백 적재 2단계화(4지표=problems, talk/total=total). LIVE DB 마이그레이션은 후속 DB 작업(init SQL 05번 갱신 포함) |
 | (구 v0.5 이하) | ~2026-09-01 | 세션/턴/녹음 재설계 이력은 archive 및 계획서 §15 참고 |

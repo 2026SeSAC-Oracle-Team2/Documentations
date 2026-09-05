@@ -24,7 +24,7 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | [03a](03a_AI_Container_API_Reference.md) 내 프롬프트 예시 별첨: `11a_memory_prompt_example.md` | userMemory 관리 LLM 프롬프트 예시 | |
 | `archive/` | 구 문서 (AI 파이프라인 설계, 와이어프레임, 체크리스트 등) | — |
 
-## 현재 진행 상황 요약 (2026-09-02)
+## 현재 진행 상황 요약 (2026-09-04)
 
 | 영역 | 상태 |
 |------|------|
@@ -36,6 +36,7 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | **백엔드 전달 3건** (탈퇴500 FK·userText null·이미지 풀 필터) | ✅ 해결 (P3-30, 2026-09-03 — B-1~B-3 실측 검증 완료) |
 | **컨테이너 협의 반영** (세션 분기·imageList 3분할·리포트 2단계) | 🔜 P3-31~33 (계약 v1.2 반영 완료 — 구현 대기) |
 | **userMemory 개인화** (에이전트 메모리 패턴) | 🔜 P3-34~35 (계약 v1.3·DB v2.2 반영 완료 — 구현 대기) |
+| **최종 기획 확정** (LISTEN 세분화·가입 설문·세션 흐름 시간 통제·대시보드 실구현 설계) | 📋 기획 완료 (2026-09-04 협의 최종 — 계약 v1.7·DB v2.6 반영, 구현 대기) |
 | 데모 (오늘의 학습) | 🎉 완료 (2026-09-03) — 최종 발표 9/10 |
 | 대시보드/기록/설정 | ⏳ Phase 4 |
 | 최종 발표 | 9/10 |
@@ -55,5 +56,6 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | v2.0.2 | 2026-09-03 | Android 데모 화면 전체 완료 반영 (P3-26~29, 21커밋 514fdce push) — 스플래시/프로필수정/문제풀이4타입/이야기3턴/리포트방사형/UI재편(네비 4탭 재편·History 폐지), TokenAuthenticator(만료 실측 403), 진행 요약 갱신. 백엔드 전달 3건은 후속 세션 대기 |
 | v2.0.3 | 2026-09-03 | 백엔드 보완 완료 반영 (P3-30, demo 브랜치 44fe801..0dfda5a push) — 회원탈퇴 FK 역순 하드딜리트(500→204, DB 잔존 0 실측)·스텁 userText 더미 STT·출제 이미지 풀 타입별 필터(namingImageIds/selfTalkImageIds 계약 선택 필드 추가). 진행 요약 갱신 |
 | v2.0.4 | 2026-09-04 | **컨테이너 협의 반영 (1):** 03a v1.2(/sessions/today·theme 분기, imageList 3분할, /report/problems·total 2단계), 03 v1.2, 04 v2.1(TYPE·REPORT_VIEWED_AT·COMPLETED_NO_TALK), 06 v1.1(리포트 2단계 UX), 계획서 v2.02(P3-31~33). 데모 완료 표기 |
-| v2.0.5 | 2026-09-04 | **컨테이너 협의 반영 (2) — userMemory:** 03a v1.3(§1.1 userInfos 개편+§7.2 양방향+§10 규약), 03 v1.3, 04 v2.2(USER_PROFILE 개편+TAGS 정규화), 06 v1.2(§5.1 개인화), 계획서 v2.03(P3-34~36). 메모리 관리 프롬프트 예시 별첨 추가 (11a) |
+
+| v2.0.6 | 2026-09-04 | **컨테이너 협의 확정 (3~7) — 기획 최종본:** 03 v1.7(articulationRate·첫사용 0 전송·LISTEN 세분화 listenText/listenPicture·등급표·중단/완료 판정·대표점수 테이블), 03a v1.7(동일 + JSON 예시 갱신), 04 v2.6(CONTENT_TYPE 6종·IMAGE_THEMA HARD 3종·USER_REPRESENTATIVE_SCORES 신설·LEARNING_SESSION.SESSION_NAME), 05a v1.4(§3.1a 클라 흐름 규약·§8 대시보드/세부보고서 API 3종), 06 v1.7(시간 통제 30초 통일·문제 가이드 화면·중단/완료 판정·가입 설문 §5.2·대시보드 §7.1). 마스코트명 "덕분이" 확정. 기획 확정 후 잔여: 컨테이너 연결·polishing·버그수정·자원관리 |
 | (구 v1.x) | ~2026-09-01 | 초기 문서 체계 (archive 참고) |
