@@ -1,6 +1,6 @@
 # 백엔드 ↔ AI 컨테이너 API 명세서 (Spring Boot ↔ FastAPI — 실구현 기준)
 
-> **버전:** v1.8 (2026-09-05) — D-4 userMemory 개인화 구현 완료 반영 (스텁 갱신 시뮬레이션 + 백엔드 라이프사이클 실측 기준, 협의분 중 미구현은 구현 예정 상태 표기 유지)
+> **버전:** v1.9 (2026-09-06) — D-5 리포트 2단계 + 세션 2종 백엔드 실구현 완료 (스텁 generateProblems/generateTotal 분리·엔드포인트 분기·백그라운드 트리거 실측 기준, 협의분 중 미구현은 구현 예정 상태 표기 유지)
 > **용도:** AI 컨테이너(FastAPI) 구현자가 그대로 따라 할 수 있는 요청/응답 JSON 예시 집합.
 > 설계 계약 = `03_AI_Container_Contract.md` · 전환 가이드 = `05a_Client_API_Reference.md` §6
 > **JSON 키 네이밍은 본 문서가 단일 기준** — 백엔드 DTO의 `@JsonProperty` 그대로. 컨테이너는 이 키를 정확히 지켜야 함.
@@ -523,7 +523,7 @@
 |------|-------------|------------------------|
 | 응답 지연 | Thread.sleep 2~3s 등 시뮬레이션 | 실제 추론 시간 (LLM=Ollama Cloud, STT=로컬 Whisper, TTS=로컬 Qwen) |
 | ttsPath | `stub/tts_{n}_ai.mp3` 더미 | 공유폴더 실경로 + 실제 mp3 생성 |
-| 세션 출제 | `/sessions/today`만 호출 (무작위) | today=무작위 / theme=기획 시나리오 플로우 (엔드포인트 분기 v1.2) |
+| 세션 출제 | **✅ v1.9 2종 엔드포인트 분리 (D-5)** — `createSessionToday`/`createSessionTheme` 메서드 분리, 내부 로직 동일(시나리오 플로우는 컨텐츠 미확정) | today=무작위 / theme=기획 시나리오 플로우 (엔드포인트 분기 v1.2) |
 | LISTEN 세분화 | `listen` 단일 타입 (텍스트 선택지 위주) → **v1.4: listenText/listenPicture로 세분화 — 스텁 미반영, 구현 예정** | listenText=개인화 활용 가능·listenPicture=imageListListening 내 이미지 선택지 (각 1회 포함) |
 | LISTEN 선택지 개수 | 고정 → **v1.4: userAQ 등급표(§2) 기반 2~4개 — 스텁 미반영** | 등급표에 따른 개수 (등급표 컨테이너 보유) |
 | NAMING 정답 | imageList의 imageName 그대로 → **v1.2: imageListNaming 배열의 imageName** | 컨테이너가 이미지 선택 + 정답 단어 결정 (EASY 이미지 전용 — v1.4) |
@@ -531,7 +531,7 @@
 | articulationRate | 요청 미전송 → **v1.4 신설 — 스텁 미반영, 구현 예정** | 첫 사용(0 수신) 시 이번 녹음을 평균으로 간주 |
 | userText | null (B-2에서 더미 예정) → **✅ B-2 완료: 음성 턴 더미 STT 반환, 첫 호출 null 유지** | 이번 턴 음성의 실제 STT 결과 |
 | 점수 | 유사도 시뮬레이션 60~95 + 감점 | 실제 채점 알고리즘 (루브릭 컨테이너 내부) |
-| 리포트 | 고정 문구 + AQ 55~85 → **v1.2: 2단계 분리 — problems(AQ+4지표, 2~3s) / total(talk+total, 10s)** | 실제 AQ 산정 + 개인화 피드백 (동일 2단계) |
+| 리포트 | **✅ v1.9 2단계 분리 스텁 구현 완료 (D-5)** — `generateProblems`(2~3s·sessionAQ=8문제 평균 올림·4지표 non-null+talk/total null) / `generateTotal`(10s·talk/total non-null+userMemory 갱신). 구 generateReport(랜덤 AQ) 폐지 | 실제 AQ 산정 + 개인화 피드백 (동일 2단계) |
 | 이미지 선택 | 풀에서 무작위 → **v1.2: 타입별 배열(imageListNaming/SelfTalk/Listening) 내에서 무작위** | 유저 정보·맥락 고려 LLM 선택 (해당 배열 내에서) |
 | userMemory | **✅ v1.8 갱신 시뮬레이션 구현 완료 (D-4)** — 기존값 있으면 기존+더미 신규 문장 반환, null이면 더미 신규 작성(11a 선언형 스타일). aichat에는 미반환(갱신 지점=/report/total 유일) | 실제 LLM 갱신 (§10 규약) |
 
@@ -588,4 +588,5 @@
 
 | v1.7 | 2026-09-04 | **컨테이너 협의 확정 (7) — 대표점수 테이블 이동:** §2 userAQ 출처 갱신 — USER_PROFILE → USER_REPRESENTATIVE_SCORES (대표점수 5종 통합). 컨테이너 입장 변화 없음 |
 | v1.3 | 2026-09-04 | **컨테이너 협의 반영 (2) — userMemory 개인화:** §1.1 userInfos 개편 — `userMemory` 신설, `likes`→`hobbies` rename, `tags` 신설(선택 태그 최대 5개, 쉼표 문자열), age=BIRTH_DATE 기반 산정. §7.2 /report/total — 요청에 기존 `userMemory` 추가, 응답에 **갱신된 `userMemory`** 추가(변경 없으면 동일값 반환, 실패 시 기존 유지). **§10 신설** — userMemory 라이프사이클/책임 경계/내용 규약(민감정보 저장 금지 — 프롬프트 통제). 백엔드는 오파크 CLOB 저장소(USER_PROFILE.USER_MEMORY, 하드캡 8KB) 
+| v1.9 | 2026-09-06 | **D-5 구현 완료 반영:** 백엔드+스텁 리포트 2단계 실구현 — `generateProblems`(§7.1·스텁 2~3s·sessionAQ=8문제 평균 올림·4지표 non-null+talk/total null)·`generateTotal`(§7.2·10s·talk/total non-null+userMemory 갱신 반환) 스텁 메서드 분리, 구 generateReport(랜덤 AQ) 폐지. 세션 2종 엔드포인트(`createSessionToday`/`createSessionTheme`) 분리 — 스텁 내부 동일(시나리오 플로우 컨텐츠 미확정). 트리거 실측: 8번째 채점 감지 afterCommit → 백그라운드 @Async(REQUIRES_NEW 적용자 분리) → 제출 응답 즉시 반환. total은 finish에서 유저 talk 답변 4턴 이상만 호출(중단 1~3턴 미호출·talk/total NULL 유지 실측). 스텁 sessionAQ 계약 정합 수정(평균 올림) — 검증 ⑤a TURN 평균 손계산 81 일치 |
 | v1.8 | 2026-09-05 | **D-4 구현 완료 반영:** §9 차이표 userMemory 행 갱신 — 스텁 갱신 시뮬레이션 구현 완료 표기(기존+더미 신규/신규 작성, aichat 미반환). 백엔드 실측: ReportRequest/Response userMemory 필드 동작, 소실 방지(null 응답→기존 유지)·하드캡 8192문자 절단 실측 완료. 리포트 2단계 분리(/report/problems·total 엔드포인트 분리)는 D-5 — 현재는 동기 finish 1회 호출에 §7.2 total 규약만 부착 ||

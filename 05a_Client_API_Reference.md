@@ -1,6 +1,6 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.4 (2026-09-04) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 44fe801+9b32634, Android 514fdce) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
+> **버전:** v1.6 (2026-09-06) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 9521f2b D-5, Android 514fdce) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
 
@@ -8,8 +8,9 @@
 
 | 구간 | 상태 |
 |------|------|
-| Auth/User API (`/auth/**`, `/users/**`) | **JWT 필수** (`anyRequest().authenticated()`) |
-| 세션/음성/콘텐츠 (`/sessions/**`, `/voice/**`, `/content/**`) | ⚠️ **permitAll (dev 임시)** — userId를 쿼리파라미터로 전달하는 임시 계약. 운영 전 JWT 인증 전환 필수 |
+| Auth/User API (`/auth/**`, `/users/**`) | **JWT 필수** (`anyRequest().authenticated()`) — **`GET /users/me/sessions/history` 포함 (v1.6 D-5 신설, JWT 경로)** |
+| 세션/음성/콘텐츠 (`/sessions/**`, `/voice/**`, `/content/**`) | ⚠️ **permitAll (dev 임시)** — userId를 쿼리파라미터로 전달하는 임시 계약. 운영 전 JWT 인증 전환 필수 (§6.3 잔여) |
+| 세부 보고서 `GET /sessions/{id}/report` (v1.6 D-5) | permitAll 경로지만 **userId 쿼리파라미터 소유 검증** — 세션 소유 유저만 조회 허용(타 유저 E0400), 중단 세션 E0404. 클라는 기존 세션 플로우 임시 계약과 동일 패턴(userId 쿼리파라미터 병용) |
 
 > 만료 응답은 **실측 403** (스펙상 401과 다름) — 클라 TokenAuthenticator는 401+403 모두 처리.
 
@@ -58,19 +59,25 @@
 
 > 구현: `SessionFlowController` + `SessionFlowService`. 모든 엔드포인트에서 **`userId`는 쿼리파라미터** (dev 임시 계약 — ⚠️ 스펙 문서에는 Bearer 기반으로 기술되어 있음)
 
-### 3.1 POST /api/v1/sessions/v2 — 세션 생성 ("오늘의 학습")
+### 3.1 세션 생성 — POST /api/v1/sessions/today · /sessions/theme (v1.6 D-5 2종 분기)
 
-| 파라미터 | 타입 | 위치 |
-|----------|------|------|
-| `userId` | Long | query |
+| 파라미터 | 타입 | 위치 | 비고 |
+|----------|------|------|------|
+| `userId` | Long | query | 공통 |
+| `thema` | String | query | **/theme 전용** — TEST/HOSPITAL/CAFE (이외 E0400 "허용되지 않는 테마"). 대소문자 무관(소문자 cafe→CAFE) |
 
-**동작:** 테마 랜덤(`demo.themes` 프로퍼티, 현재 TEST) → IMAGE_THEMA 이미지 풀 → StubClient 8문제 생성 (2~3초) → TURN 8행 INSERT(PENDING) + VOICE_RECORD AI 행 → 응답
+**동작 (v1.6 D-5):** 엔드포인트 2종 분기 —
+- `POST /sessions/today?userId=26` — 테마 **랜덤**(`demo.themes` 프로퍼티, 현재 TEST) + 무작위 출제 → LEARNING_SESSION.type=`today`
+- `POST /sessions/theme?userId=26&thema=TEST` — 테마 **고정** → LEARNING_SESSION.type=`theme` (기획 시나리오 플로우는 컨텐츠 확정 후 — 현재 스텁은 today와 동일 무작위 출제, 컨테이너 엔드포인트만 분기)
+- 공통: IMAGE_THEMA 이미지 풀 → 컨테이너 세션 생성 (스텁 2~3초) → TURN 8행 INSERT(PENDING) + VOICE_RECORD AI 행 → 응답
+- `POST /sessions/v2?userId=26` — **하위호환 유지**(클라 데모가 사용 중) — today와 동일 동작
 
 ```json
-// 응답 data — SessionCreateData
+// 응답 data — SessionCreateData (v1.6: type 필드 추가)
 {
   "sessionId": 101,
   "theme": "TEST",
+  "type": "today",      // D-5: today | theme — 요청 엔드포인트에 따른 세션 종류
   "turns": [
     {
       "turnId": 501, "turnNumber": 1, "type": "LISTEN",
@@ -92,7 +99,7 @@
 ```
 - ⚠️ `mediaType`은 실측 **소문자** `text` | `image` (스펙 문서 대문자 TEXT|IMAGE와 다름)
 - ⚠️ 경로가 실구현 `/v2` — 스펙 문서와 차이. 클라는 v2 사용 중
-- type은 대문자 `LISTEN|NAMING|SHADOWING|SELF_TALK` (클라 매핑 확인됨). ⏳ **v1.2 협의: LISTEN → LISTEN_TEXT/LISTEN_PICTURE 세분화 예정** (03a v1.4 — 미구현, 현재 데모는 LISTEN 유지)
+- type은 대문자 `LISTEN_TEXT|LISTEN_PICTURE|NAMING|SHADOWING|SELF_TALK` (✅ v1.2 협의 세분화 **D-2 실구현 완료** — 03a v1.4 계약. 선택지는 LISTEN_TEXT=텍스트형만/LISTEN_PICTURE=이미지형만)
 
 ### 3.1a 클라 세션 흐름 규약 (v1.3 협의 — 구현 예정)
 
@@ -162,21 +169,23 @@
 - 데모 하드캡: `demo.talk-turn-limit=3` — 4번째 제출 시 E0401(세션 이야기 턴 소진) → 클라 종료 안내
 - 조기종료(구 데모): 클라가 `/finish` 호출 — ⏳ **v1.6 협의로 개편 예정**: 1~3턴 중단=학습 중단 판정(우는 덕분이 팝업 → total 미호출) / 4턴째 답변 후 [학습 마치기]=학습 완료 판정(total 호출, 유저 4턴 답변까지만). 데모 구현은 구 규약 유지 — 백엔드 작업 세션에서 판정 로직 반영
 
-### 3.5 POST /{sessionId}/finish — 세션 종료 + 리포트
+### 3.5 POST /{sessionId}/finish — 세션 종료 + 간이 보고서 (v1.6 D-5 재편)
 
 ```json
-// 응답 data — FinishData (스텁 2~3초, 동기 — 클라 로딩 대기)
+// 응답 data — FinishData (동기 즉시 반환 — 상세 보고서는 백그라운드, 대기 없음)
 {
-  "sessionAQ": 67,
+  "sessionAQ": 81,
   "feedbacks": {
     "listenFeedback": "...", "namingFeedback": "...", "shadowingFeedback": "...",
-    "selfTalkFeedback": "...", "talkFeedback": "...", "totalFeedback": "..."
+    "selfTalkFeedback": "...", "talkFeedback": null, "totalFeedback": null
   }
 }
 ```
-- 백엔드: StubClient /report → LEARNING_SESSION에 AQ+피드백 6종 저장, status=COMPLETED
-- userAQ 산정식: 최근 20세션 AQ 상위 10 평균 (0개 null) — /sessions/v2에 사용
-- ⚠️ **턴별 점수는 응답에 없음** — 클라가 제출 응답 score를 누적해 결과 화면에 전달 (세션상세 GET API는 미구현, P5 과제)
+- **v1.6 2단계 재편 (03a §7):** AQ+4지표 피드백은 8번째 문제 채점 완료 시점에 백엔드가 자동 확보(/report/problems 백그라운드) — finish는 그 **간이 보고서를 응답**으로 돌려준다. talk/total 피드백은 **항상 null** — 세부 보고서(§8.3)에서 수령 (클라 D-6이 이 계약을 따라감)
+- **중단/완료 판정 (03 계약서 §9.3):** 유저 이야기 답변(=STORYTELLING answer_text 행 수) 기준 — **1~3턴 = 학습 중단** → STATUS=`COMPLETED_NO_TALK` + 상세 보고서 생성 안 함(talk/total NULL 유지·기록탭 미표시) / **4턴 이상 = 학습 완료** → STATUS=`COMPLETED` + /report/total 백그라운드 호출(스텁 10초 — talk/total 피드백 + userMemory 갱신 완료 후 세부 보고서 조회 가능) / **8턴 하드캡** = 유저 8턴째 답변 후 AI 마무리 응답까지 생성 가능
+- STATUS: COMPLETED / COMPLETED_NO_TALK / IN_PROGRESS — 이력 필터(§8.2)는 `COMPLETED_NO_TALK 제외 + AQ NOT NULL`
+- userAQ 출처 (v1.6 교체): **REP_SCORES.USER_AQ 캐시 직접 조회** — 산정식 실행 없음 (03 계약서 §10 v1.7 계약)
+- ⚠️ **턴별 점수는 응답에 없음** — 클라가 제출 응답 score를 누적해 결과 화면에 전달 (세부 보고서 §8.3에서 턴별 답변도 수령 가능)
 
 ## 4. 음성/콘텐츠 스트리밍
 
@@ -232,7 +241,8 @@ demo:
 | POST /answer/shadowing | `{sessionID, userID, problemContext, userVoicePath}` | `{sessionID, userID, scoreShadowing, userVoiceEval}` | |
 | POST /answer/selfTalk | `{sessionID, userID, problemImage(이름), problemTag(tags.json 원문), userVoicePath}` | `{sessionID, userID, scoreSelfTalk, userVoiceEval}` | |
 | POST /aichat | `{sessionID, userID, userInfos, turnResults[], context[{speaker,text}], userVoicePath?}` | `{sessionID, userID, llmResponse, userText}` | 첫 호출 context 빈 배열 + userVoicePath 없음 |
-| POST /report | `{sessionID, userID, turns[], talkContext[]}` | `{sessionID, userID, sessionAQ, sessionFeedbacks{6종}}` | |
+| POST /report/problems (✅ v1.6 2단계 분리) | `{sessionID, userID, turns[8문제]}` | `{sessionID, userID, sessionAQ, sessionFeedbacks(4지표 non-null·talk/total null)}` | 백엔드가 8번째 채점 완료 감지 후 자동 호출(백그라운드) |
+| POST /report/total (✅ v1.6 2단계 분리) | `{sessionID, userID, userMemory, turns[8문제], talkContext[유저 4턴까지만]}` | `{sessionID, userID, userMemory(갱신값), sessionFeedbacks(talk/total non-null·4지표 null)}` | finish에서 유저 talk 답변 4턴 이상 시 백그라운드 호출 — 중단(1~3턴) 미호출 |
 
 - userVoiceEval 공통: `{durationSecond, syllables, speakingTime, articulationTime, text}` — 발화지표 3종 rename 반영
 - **ttsPath**: 공유폴더 실제 경로 (`{userUUID}/{sessionID}/{로컬turnId}_ai.mp3`). real 전환 시 docker-compose에 볼륨 마운트 추가 필수 (BE와 컨테이너가 같은 경로 공유)
@@ -283,54 +293,67 @@ demo:
 - 출처: USER_REPRESENTATIVE_SCORES (USER_AQ + 4지표 — LISTEN은 LISTEN_TEXT/LISTEN_PICTURE 통합)
 - null = 캐시 미산출(설문 미응답 or 실세션 0) — 클라는 방사형에서 0 표시 후 "학습을 시작해보세요" 등 폴백
 
-### 8.2 GET /api/v1/users/me/sessions/history — 지난 학습 카드 리스트
+### 8.2 GET /api/v1/users/me/sessions/history — 지난 학습 카드 리스트 — ✅ **D-5 실구현 완료 (2026-09-06)**
 
 ```json
-// 응답 data
+// 응답 data — 실측 (user 26)
 {
   "sessions": [
-    { "sessionId": 101, "sessionName": "오늘의 학습 - 병원", "createdAt": "2026-09-04T10:15:00", "aq": 67 },
-    { "sessionId": 100, "sessionName": "병원에서 진료받기", "createdAt": "2026-09-03T18:40:00", "aq": 72 }
+    { "sessionId": 76, "sessionName": "오늘의 학습 - TEST", "createdAt": "2026-09-06T01:50:09.527617", "aq": 81 },
+    { "sessionId": 68, "sessionName": "오늘의 학습 - TEST", "createdAt": "2026-09-06T00:43:10.185821", "aq": 63 }
   ]
 }
 ```
 
-- 조회 조건: **STATUS != COMPLETED_NO_TALK** (학습 중단 세션 미표시) + AQ NOT NULL
-- sessionName = LEARNING_SESSION.SESSION_NAME (today=`오늘의 학습 - {테마명}` / theme=시나리오명)
+- 인증: **JWT 필수** (§0 — userUuid 기반 소유 스코프)
+- 조회 조건 (v1.6 규약 확정): **STATUS != COMPLETED_NO_TALK AND AQ IS NOT NULL** — AQ null = 간이 보고서 미생성 세션(카드 AQ 표시 불가) 제외. 학습 중간에 나간 IN_PROGRESS 세션도 자연 배제 (실측: IN_PROGRESS 70~79·type NULL 61~63·중단 77 전부 제외 확인)
+- sessionName = LEARNING_SESSION.SESSION_NAME (today=`오늘의 학습 - {테마명}` / theme=시나리오명 — 컨텐츠 확정 전은 테마 기반)
 - createdAt은 **ISO 타임스탬프** 전달 — 표현(YYYY.mm.dd)은 **클라 포맷** 책임 (포맷은 presentation 관심사 — 서버는 CREATED_AT 원시값만). aq는 "AQ nn점"으로 클라 포맷
+- 페이징 미도입 (발표 전 규모 — 성능 이슈 시 후속)
 - 카드 터치 → 8.3 세부 보고서
 
-### 8.3 GET /api/v1/sessions/{sessionId}/report — 세부 보고서 (상세)
+### 8.3 GET /api/v1/sessions/{sessionId}/report — 세부 보고서 (상세) — ✅ **D-5 실구현 완료 (2026-09-06)**
+
+```
+GET /api/v1/sessions/{sessionId}/report?userId={userId}
+```
+
+⚠️ **인증 (v1.6 확정):** permitAll 경로 — **userId 쿼리파라미터 소유 검증** 필수 (세션 소유 유저만 조회 허용 — 타 유저 E0400). 클라는 기존 세션 플로우 임시 계약과 동일 패턴으로 userId 병용.
 
 ```json
-// 응답 data
+// 응답 data — 실측 (세션 76)
 {
-  "sessionId": 101, "aq": 67,
-  "totalFeedback": "전반적으로 좋은 흐름이었어요...",
-  "radar": { "listen": 80.0, "naming": 70.0, "shadowing": 85.0, "selfTalk": 55.0 },
+  "sessionId": 76, "aq": 81,
+  "totalFeedback": "전반적으로 안정적인 발화를 보였습니다...",
+  "radar": { "listen": 100.0, "naming": 79.5, "shadowing": 70.0, "selfTalk": 74.5 },
   "metricCards": [
-    { "type": "LISTEN", "score": 80.0, "feedback": "알아듣기 문제를 대부분 정확히 골랐어요.",
+    { "type": "LISTEN", "score": 100.0, "feedback": "알아듣기 문제를 대부분 정확히 골랐어요. (평균 100점)",
       "turns": [
-        { "turnId": 501, "turnNumber": 1, "promptText": "사과를 고르세요",
-          "ttsUrl": "/api/v1/voice/101", "imageUrl": null,
-          "answer": { "mediaType": "text", "value": "2", "correct": true } }
+        { "turnId": 485, "turnNumber": 5, "promptText": "포도을(를) 고르세요",
+          "ttsUrl": "/api/v1/voice/461", "imageUrl": null,
+          "answer": { "mediaType": "image", "value": "94", "correct": true } },
+        { "turnId": 487, "turnNumber": 7, "promptText": "여기서 금요일이 며칠인지 말해보세요",
+          "ttsUrl": "/api/v1/voice/463", "imageUrl": null,
+          "answer": { "mediaType": "text", "value": "8월 12일", "correct": true } }
       ] }
   ],
-  "talkFeedback": "자연스럽게 대화를 이어갔어요.",
+  "talkFeedback": "자유 대화에 적극적으로 참여하셨습니다...",
   "talkHistory": [
-    { "speaker": "AI", "text": "아까 문제 푸느라 고생했네요! 오늘 하루 어땐어요?", "ttsUrl": null },
-    { "speaker": "USER", "text": "오늘은 카페에 갔어요", "voiceUrl": "/api/v1/voice/205" }
+    { "speaker": "AI", "text": "수고하셨습니다. 마지막으로 오늘 기분이...", "ttsUrl": null },
+    { "speaker": "USER", "text": "오늘은 카페에 갔어요", "voiceUrl": "/api/v1/voice/520" }
   ],
-  "reportViewedAt": "2026-09-04T15:20:00"
+  "reportViewedAt": "2026-09-06T01:54:09.316230"
 }
 ```
 
-- radar = **해당 세션 TURN.score 집계** (대표점수 아님 — 대시보드 8.1과 출처 구분)
-- metricCards[].turns — 문제 안내(prompt_text)·AI TTS(ttsUrl 재생)·내 답변(선택지 텍스트/그림 = selected_value, 음성 = voiceUrl)
-- LISTEN은 정답 여부(correct) 포함 / 음성형은 STT 텍스트(answer_text) 동봉 권장
-- talkHistory — AI 대화 피드백(talkFeedback) + 대화 내역(AI text + 내 답변 다시 듣기)
-- 응답 수신 시 백엔드가 **REPORT_VIEWED_AT 갱신** (null=미조회 판별 규약과 연동)
-- 학습 중단 세션(COMPLETED_NO_TALK)은 8.2 리스트에서 제외 — 8.3 직접 호출도 404 또는 빈 응답 처리
+- radar = **해당 세션 TURN.score 집계** (대표점수 아님 — 대시보드 8.1과 출처 구분) — LISTEN=LISTEN_TEXT+LISTEN_PICTURE 통합 4축, score NULL 턴 제외, 해당 타입 턴 없으면 null
+- metricCards[] — type(LISTEN|NAMING|SHADOWING|SELF_TALK) / score(해당 타입 평균=radar와 동일) / feedback(LEARNING_SESSION.*_feedback 간이 보고서 적재분) / turns(해당 타입 문제풀이 턴 배열)
+- metricCards[].turns — 문제 안내(prompt_text)·AI TTS(ttsUrl)·내 답변(answer)·imageUrl(NAMING/SELF_TALK)
+- **answer 계약 (v1.6 확정):** LISTEN_TEXT=`{mediaType:"text", value:"선택했던 선택지 텍스트", correct:bool}` — value는 choices_json 역직렬화로 1-based order에서 텍스트 추출(실측: "8월 12일") / LISTEN_PICTURE=`{mediaType:"image", value:"선택지 context(=image_id 문자열)", correct:bool}` (실측: "94") / 음성형=`{mediaType:"voice", value:"answer_text(STT)", voiceUrl}`
+- LISTEN은 정답 여부(correct) 포함 / 음성형은 STT 텍스트(answer_text) + 유저 음성 voiceUrl 동봉
+- talkHistory — AI 발화(text, VOICE_RECORD AI행 있으면 ttsUrl) + 유저 답변(voiceUrl 다시 듣기)
+- 응답 수신 시 백엔드가 **REPORT_VIEWED_AT 기록** — **null일 때만 기록**(최초 1회, v1.6 구현 방식 확정 — 매 조회 덮어쓰기 아님). 응답 reportViewedAt = 기록된 시각(이미 기록돼 있으면 기존 시각 반환)
+- 학습 중단 세션(COMPLETED_NO_TALK)은 8.2 리스트에서 제외 — 8.3 직접 호출도 **E0404** (실측)
 
 ## 9. 변경 이력
 
@@ -339,6 +362,7 @@ demo:
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
 
 
+| v1.6 | 2026-09-06 | **D-5 대시보드+세션 플로우 실구현 전면 갱신:** §3.1 세션 2종 분기(POST /sessions/today·/theme — thema 쿼리파라미터 TEST/HOSPITAL/CAFE 이외 E0400·소문자 허용, /v2는 하위호환 유지, SessionCreateData.type 필드 신설, LISTEN 세분화 D-2 완료 표기), §3.5 finish 재편(간이 보고서 응답 — talk/total 항상 null·중단/완료 판정 규약·userAQ=REP_SCORES 캐시 조회 교체), §8.2 ✅ D-5 실구현(JWT 필수·STATUS != COMPLETED_NO_TALK **AND AQ IS NOT NULL** 규약 확정·페이징 미도입), §8.3 ✅ D-5 실구현(userId 쿼리파라미터 소유 검증·radar TURN 집계·answer 계약 확정 — LISTEN_TEXT=선택지 텍스트 추출·LISTEN_PICTURE=image_id context·REPORT_VIEWED_AT null일 때만 기록·중단 세션 E0404), §0 인증 현황 갱신(history JWT·report userId 병용), §6.1/6.2 전환 가이드 갱신(talk-turn-limit 8·계약 키 표 2종 엔드포인트+리포트 2단계). **클라 D-6 연동 시 주의: finish 응답 talk/total null — 세부 보고서는 §8.3에서 수령** |
 | v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
 | v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |
