@@ -1,6 +1,6 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.7 (2026-09-06) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 9b35395 D-8②b, Android d465298→1fc9825) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
+> **버전:** v1.8 (2026-09-07) — **§1.1 로그인 응답 키 실측 정정 (snake_case → camelCase)** — FE 연동 실측(F-3: 로그인 HTTP 200 수신 후 토큰 파싱 실패 확인)으로 발견·BE DTO 역추적 재확인(AuthDto.kt AuthResponse — Jackson 기본 직렬화, 네이밍 전략 미설정). BE 코드 기준값이며 이 정정이 계약의 우선 근거 (v1.7: 2026-09-06 D-8②b + 컨테이너 협의 확정 반영)
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
 
@@ -20,22 +20,28 @@
 ```json
 // 요청
 { "id_token": "<Firebase ID Token>" }
-// 응답 data
+// 응답 data — ✅ v1.8 실측 정정: 키는 **camelCase** (Jackson 기본 직렬화 — AuthDto.kt
+// AuthResponse에 네이밍 전략 미설정, application.yml에 property-naming-strategy 없음 확인)
+// ⚠️ 요청만 snake_case(id_token — @JsonProperty 지정), 응답은 camelCase로 구분된다
 {
-  "access_token": "...", "refresh_token": "...", "expires_in": 900,
+  "accessToken": "...", "refreshToken": "...", "expiresIn": 900,
   "user": { "id": 1, "uuid": "...", "email": "a@b.c", "nickname": null,
-            "profile_image_url": null, "level": 1, "created_at": "..." },
-  "is_new_user": true
+            "profileImageUrl": null, "level": 1, "createdAt": "..." },
+  "isNewUser": true
 }
 ```
-- ⚠️ 응답 키는 snake_case (`access_token` 등) — 클라 TokenManager 저장 키와 일치
+- ⚠️ **응답 키는 camelCase (`accessToken` 등)** — v1.7까지 snake_case로 표기한 것은 문서 오류
+  (2026-09-07 F-3 연동 실측으로 발견: snake 파싱 시 Gson이 필드를 못 찾아 토큰이 누락된 것처럼
+  보이는 증상 발생 — 요청 user 객체는 camelCase라 정상 수신되는 것이 감별 포인트)
+- 클라 TokenManager 저장 키는 이 camelCase와 일치시킬 것
 
 ### 1.2 POST /api/v1/auth/refresh — 토큰 갱신
 ```json
-// 요청 — ✅ camelCase (v1.98 수정: 구 snake_case는 Jackson 파싱 500)
-{ "refresh_token": "..." }   // 헤더 X-Refresh-Token도 지원
-// 응답 data
-{ "access_token": "...", "expires_in": 900 }
+// 요청 — ✅ v1.8 실측 정정: camelCase 필드명 (refreshToken — TokenRefreshRequest DTO 기준,
+// snake_case는 파싱 실패 → E0500. v1.6.1 이전 문서의 "refresh_token" 표기는 오류)
+{ "refreshToken": "..." }   // 헤더 X-Refresh-Token도 지원
+// 응답 data — ✅ v1.8 실측 정정: camelCase (§1.1과 동일 — Jackson 기본 직렬화)
+{ "accessToken": "...", "expiresIn": 900 }
 ```
 
 ### 1.3 POST /api/v1/auth/logout — 로그아웃 (Bearer)
@@ -392,7 +398,7 @@ Authorization: Bearer {accessToken}
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
-| v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
+| v1.8 | 2026-09-07 | **§1.1·§1.2 로그인/갱신 응답 키 실측 정정 (snake_case → camelCase):** FE F-3 연동에서 "BE 로그인 응답에 토큰 누락" 보고 → BE DTO 역추적 재실측(AuthDto.kt AuthResponse: accessToken·refreshToken·expiresIn·user·isNewUser — Jackson 기본 직렬화·네이밍 전략 미설정·application.yml에 property-naming-strategy 없음)으로 확인. 실측 응답은 camelCase이며 v1.7까지의 snake_case 표기는 문서 오류였음(원 근원: 초기 스펙 05의 snake 규약이 역추적 시 잘못 이월). 감별 포인트: user 객체(항상 camelCase)는 정상 수신되는데 토큰만 snake로 기대하면 파싱 실패 — Gson 무일치 필드는 기본값/누락 처리. **BE 수정 불필요·클라 파싱(camelCase) 대응이 정답**. §1.2 refresh 요청도 refreshToken(camelCase) 실측 정정(snake → Jackson 파싱 실패 E0500 재확인). 요청의 id_token만 snake 유지(@JsonProperty 지정분) |
 
 
 | v1.7 | 2026-09-06 | **D-8②b 홈 통계 API 실구현 반영:** **§8.4 신설** — GET /api/v1/users/me/stats(JWT·scores 동일 봉투): streakDays(완료 세션 일자 연속·서버 로컬 KST·오늘/어제 소급 — 오늘 완료 없어도 어제까지 연속이면 유지·중단 세션 제외), avgScore(최근 10개 완료 세션 AQ 평균 소수 1자리 — **ADR-009 아님, 최근 10개 전부 평균** 명시), deltaScore(최근 10 평균 − 직전 10 평균·11번째 없으면 null·부호 포맷은 클라). 완료 세션 필터 = `STATUS != 'COMPLETED_NO_TALK' AND AQ IS NOT NULL` — §8.2 history와 공용 프레디케이트(CompletedSessionFilter) 공유. 실측: user 26 streak=1·avg=72.3·delta=null(손계산 일치), 신규 유저 0/null, 중단 세션(AQ 적재분 포함) 불반영 |
