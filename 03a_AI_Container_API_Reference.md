@@ -1,6 +1,6 @@
 # 백엔드 ↔ AI 컨테이너 API 명세서 (Spring Boot ↔ FastAPI — 실구현 기준)
 
-> **버전:** v1.11 (2026-09-09) — e2e-3 확정분 반영: §0 공유폴더 인프라 기술 보강(shared-audio-root·TTS 실물 스트리밍)·§6.1 AI 발화 톤 규약 신설. 구 v1.10 = F-5~F-8 데모 UX 라운드 (Android main 머지 e809df7·BE 무변경 — 클라+컨테이너 동작 실측 기준)
+> **버전:** v1.12 (2026-09-09) — e2e-3 G·H·C·방어 구현 확정 반영: §2.2 LISTEN 폴백 한정·TTS 스킵 규약·§6.1 톤 규약 구현 확정·STT 재시도/503. 구 v1.11 = 공유폴더 인프라 기술 보강+톤 규약 신설. 구 v1.10 = F-5~F-8 데모 UX 라운드 (Android main 머지 e809df7·BE 무변경 — 클라+컨테이너 동작 실측 기준)
 > **v1.10 핵심:** NAMING 힌트 채점 표기 정정(의미→조음 순차 공개는 BE SessionScoringService.getHint 처리 — hintCount는 클라가 힌트 버튼을 누른 횟수로 컨테이너에 전달, 컨테이너는 감점 루브릭만 적용), NAMING·SELF_TALK 낭독 TTS 폐지(A2 — 컨테이너 tts_naming/tts_selftalk 스텁은 유지하되 클라 미사용), LISTEN_PICTURE 선택지 = IMAGE_RESOURCE 이미지 id 문자열 실측(§3.1 example)
 > **용도:** AI 컨테이너(FastAPI) 구현자가 그대로 따라 할 수 있는 요청/응답 JSON 예시 집합.
 > 설계 계약 = `03_AI_Container_Contract.md` · 전환 가이드 = `05a_Client_API_Reference.md` §6
@@ -126,7 +126,7 @@
 |----|------|------|
 | sessionId | Long | 백엔드 발급 세션 ID |
 | thema | String | TEST / HOSPITAL / CAFE |
-| imageListListening | Array | **IMAGE_TAG_PATH 없고 SEMANTIC_CUE 없는 이미지** — LISTEN 전용 풀 |
+| imageListListening | Array | **IMAGE_TAG_PATH 없고 SEMANTIC_CUE 없는 이미지** — LISTEN 전용 풀. **[e2e3-C] 풀 부족 시 폴백 한정:** 조건 풀 0건이면 TAG 없는 이미지(=TAG없는 전체)로 한정 — TAG 보유(SELF_TALK) 이미지가 LISTEN 선택지에 누출되지 않음(세션256 누출 재현 → 258~260 재실측 해소). TAG 없는 이미지 0건이면 기존 폴백 유지+경고 로그 |
 | imageListNaming | Array | **SEMANTIC_CUE 보유 이미지** — NAMING 전용 풀 (정답 단어 소스) |
 | imageListSelfTalk | Array | **IMAGE_TAG_PATH 보유 + SEMANTIC_CUE 없는 이미지** — SELF_TALK 전용 풀 (태그 채점용) |
 | userID | Long | ⚠️ `userID` — ID 대문자 |
@@ -208,7 +208,7 @@
 | sessionId / userID | Long | 요청 값 그대로 (정합성) |
 | problemList[].turnId | Int | **로컬 번호 1~8** — DB PK 아님 |
 | problemList[].type | String | **소문자**: listenText / listenPicture / naming / shadowing / selfTalk — **v1.4: LISTEN 세분화, 구 `listen` 폐지** |
-| problemList[].ttsPath | String | 공유폴더상 AI TTS 경로: `{userUUID}/{sessionID}/{로컬turnId}_ai.mp3`. 컨테이너가 이 경로에 mp3 파일을 **실제로 생성**해야 함. (스텁은 `stub/tts_{n}_ai.mp3` 더미 문자열 반환 — 실컨테이너는 실경로 + 실파일) |
+| problemList[].ttsPath | String | 공유폴더상 AI TTS 경로: `{userUUID}/{sessionID}/{로컬turnId}_ai.mp3`. 컨테이너가 이 경로에 mp3 파일을 **실제로 생성**해야 함. (스텁은 `stub/tts_{n}_ai.mp3` 더미 문자열 반환 — 실컨테이너는 실경로 + 실파일) **[e2e3-H] NAMING·SELF_TALK은 TTS 스킵 — `""`(빈 문자열) 반환**, mp3 미생성. BE는 ttsPath null·공백 모두 VOICE_RECORD AI 행 미생성(클라 ttsUrl 404 방지). LISTEN·SHADOWING은 기존대로 실경로 |
 | problemList[].passage | String | TTS가 읽은 텍스트 = TURN.prompt_text |
 | perType | object? | listenText·listenPicture: `correct`(정답 options 인덱스, Int) + `options` / naming: `correct`(정답 단어) / shadowing: **null** (지문=문제) / selfTalk: `image`(이미지 id) |
 
@@ -593,6 +593,7 @@
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
+| v1.12 | 2026-09-09 | **e2e-3 G·H·C·방어 구현 확정 반영 (매니저 재실측 완료분):** §2.2 imageListListening **폴백 한정 규약 신설**(e2e3-C — 조건 풀 0건 시 TAG 없는 이미지로 한정, TAG 보유 이미지의 LISTEN 선택지 누출 방지 — 세션256 재현·258~260 해소 재실측)·§2.2 problemList[].ttsPath **TTS 스킵 규약**(e2e3-H — NAMING·SELF_TALK은 `""` 반환·mp3 미생성, BE는 VOICE_RECORD AI 행 미생성, 세션262 실측: 스킵 유형만 AI 행 0건·공유폴더 mp3 4건만)·§6.1 톤 규약 **구현 확정**(e2e3-G — 프롬프트+_clamp_sentences 3문장 절단·반복자음 축약 코드 방어, 세션262 실측 이모티콘 0건)·**STT 재시도·503 규약**(e2e3-def — whisper_timestamped assert 불일치 시 재시도 1회, 재실패 503 STT_TRANSCRIBE_FAILED 무음 catch 금지, 반복 제출 ×5 실측 200). SELF_TALK problemTag OCI 원본 연동(v1.11 보류분)도 구현 완료 — imageId 110·68 tags.json 로드 실측 |
 | v1.11 | 2026-09-09 | **e2e-3 확정분 반영:** §0 공유폴더 인프라 기술 보강 — `ai.container.shared-audio-root` 프로퍼티(경로값 미기재·키명만)·TTS 실물 스트리밍(VoiceStreamController — 05a §6.3 정합). §6.1 AI 발화 톤 규약 신설 — **2~3문장 이내·이모티콘/반복자음 금지**(컨테이너 프롬프트 구현 — BE/클라 후처리 없음). SELF_TALK problemTag OCI 원본 연동 상태 표기는 tags.json 연동 확정 시 차기 반영 |
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 DTO(`AiContainerDtos.kt`) 역추적. 엔드포인트별 전체 JSON 예시 포함. 스텁/실컨테이너 차이 표 (§9) |
 | v1.1 | 2026-09-03 | B-2/B-3 반영 — §2 요청에 namingImageIds/selfTalkImageIds 선택 필드 추가(백엔드 조건 필터+완화 규약), §6 스텁 userText 더미 STT 수정 완료 표기, §9 차이표 갱신 |
