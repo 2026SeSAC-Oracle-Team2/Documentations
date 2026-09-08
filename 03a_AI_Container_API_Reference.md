@@ -1,6 +1,6 @@
 # 백엔드 ↔ AI 컨테이너 API 명세서 (Spring Boot ↔ FastAPI — 실구현 기준)
 
-> **버전:** v1.10 (2026-09-08) — F-5~F-8 데모 UX 라운드 구현 확정 반영 (Android main 머지 e809df7·BE 무변경 — 클라+컨테이너 동작 실측 기준)
+> **버전:** v1.11 (2026-09-09) — e2e-3 확정분 반영: §0 공유폴더 인프라 기술 보강(shared-audio-root·TTS 실물 스트리밍)·§6.1 AI 발화 톤 규약 신설. 구 v1.10 = F-5~F-8 데모 UX 라운드 (Android main 머지 e809df7·BE 무변경 — 클라+컨테이너 동작 실측 기준)
 > **v1.10 핵심:** NAMING 힌트 채점 표기 정정(의미→조음 순차 공개는 BE SessionScoringService.getHint 처리 — hintCount는 클라가 힌트 버튼을 누른 횟수로 컨테이너에 전달, 컨테이너는 감점 루브릭만 적용), NAMING·SELF_TALK 낭독 TTS 폐지(A2 — 컨테이너 tts_naming/tts_selftalk 스텁은 유지하되 클라 미사용), LISTEN_PICTURE 선택지 = IMAGE_RESOURCE 이미지 id 문자열 실측(§3.1 example)
 > **용도:** AI 컨테이너(FastAPI) 구현자가 그대로 따라 할 수 있는 요청/응답 JSON 예시 집합.
 > 설계 계약 = `03_AI_Container_Contract.md` · 전환 가이드 = `05a_Client_API_Reference.md` §6
@@ -17,6 +17,8 @@
 | 정합성 | 모든 요청/응답에 `sessionID` + `userID` 포함 — 백엔드가 대조 검증 |
 | `turnId` | **컨테이너 로컬 번호 1~8** (DB TURN PK 아님, ADR-006). 백엔드가 응답 수신 후 실제 PK로 리매핑 |
 | 에러/타임아웃 | 미정 (고도화 과제). 데모 단계는 항상 200 + 정상 바디 가정 |
+| 공유폴더 루트 | 백엔드 신설 프로퍼티 `ai.container.shared-audio-root`로 공유폴더 루트 경로 주입 (v1.11 기술 보강 — 경로값은 시크릿 규약상 문서 미기재, 키명만) |
+| TTS 실물 스트리밍 | 실모드 TTS 음성 파일도 공유폴더 경유 — 컨테이너가 mp3를 공유폴더에 기록하면 백엔드 VoiceStreamController가 이를 스트리밍 서빙 (05a §6.3 전환 체크리스트 항목과 정합 — 매니저 실측 기반 기술 보강) |
 | 스텁 전환 | 백엔드 `ai.container.mode: stub\|real` — 컨테이너는 real 모드에서 아래 전체를 구현 |
 
 ## 1. 공통 객체
@@ -391,6 +393,16 @@
 
 > ⚠️ ~~스텁 현재 동작: userText가 항상 null~~ → **B-2 수정 완료 (2026-09-03):** 음성이 있는 턴(`userVoicePath != null`)은 스텁이 더미 STT 텍스트를 userText로 반환한다. **첫 호출(음성 없는 턴)은 규약대로 null 유지.** 실컨테이너는 **이번 턴 userVoicePath 음성의 STT 결과**를 userText로 반환할 것.
 
+### 6.1 AI 발화 톤 규약 (e2e-3 확정 — v1.11 신설)
+
+| 항목 | 규약 |
+|------|------|
+| 발화 길이 | **2~3문장 이내** — 시니어 학습자 가독 기준 |
+| 금지 표현 | **이모티콘 금지** · **반복자음(ㅋㅋ, ㅎㅎ 등) 금지** — 존댓말 자연어 유지 |
+| 적용 범위 | `llmResponse` 전부 (STORYTELLING 첫 대사 포함). 컨테이너 내부 프롬프트로 구현 — 백엔드/클라 후처리 없음 |
+
+> 규약 원문 문구는 매니저 확정본 기준 — 컨테이너 프롬프트 반영 상태는 구현 완료 확인 후 갱신.
+
 ## 7. 리포트 생성 — 2단계 분리 (v1.2)
 
 > **UX 개선 (2026-09-04 합의):** 리포트를 2단계로 분리 — 문제 8턴 종료 시점에 간이 보고서(AQ+4지표 피드백)를 먼저 확보해 이야기 턴 동안 백그라운드 완성 → 사용자는 종료 후 즉시 간이 보고서를 보고, 상세 보고서(talk/total 피드백)는 완료 후 앱 내 알림으로 수령.
@@ -581,6 +593,7 @@
 
 | 버전 | 날짜 | 내용 |
 |------|------|------|
+| v1.11 | 2026-09-09 | **e2e-3 확정분 반영:** §0 공유폴더 인프라 기술 보강 — `ai.container.shared-audio-root` 프로퍼티(경로값 미기재·키명만)·TTS 실물 스트리밍(VoiceStreamController — 05a §6.3 정합). §6.1 AI 발화 톤 규약 신설 — **2~3문장 이내·이모티콘/반복자음 금지**(컨테이너 프롬프트 구현 — BE/클라 후처리 없음). SELF_TALK problemTag OCI 원본 연동 상태 표기는 tags.json 연동 확정 시 차기 반영 |
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 DTO(`AiContainerDtos.kt`) 역추적. 엔드포인트별 전체 JSON 예시 포함. 스텁/실컨테이너 차이 표 (§9) |
 | v1.1 | 2026-09-03 | B-2/B-3 반영 — §2 요청에 namingImageIds/selfTalkImageIds 선택 필드 추가(백엔드 조건 필터+완화 규약), §6 스텁 userText 더미 STT 수정 완료 표기, §9 차이표 갱신 |
 | v1.2 | 2026-09-04 | **컨테이너 협의 반영 (1):** §2 엔드포인트 분기 — `/sessions/today`(테마 랜덤+무작위 출제) / `/sessions/theme`(기획 시나리오 플로우), 요청·응답 필드 공통. **imageList 3분할** — imageListListening/Naming/SelfTalk (분류: TAG_PATH 있음=SELF_TALK, TAG 없음+CUE 있음=NAMING(+LISTEN 공용), 둘 다 없음=LISTEN). 구 namingImageIds/selfTalkImageIds 폐지. §7 리포트 2단계 분리 — `/report/problems`(8턴 종료, AQ+4지표, 2~3s) / `/report/total`(종료, talk+total, 10s) + 조기종료 COMPLETED_NO_TALK 규약 + §7.3 DB 저장 흐름 |
