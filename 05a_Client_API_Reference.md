@@ -1,7 +1,8 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.9 (2026-09-09) — **실제 구현 코드 기준** (구 v1.8 = F-5~F-8 데모 UX 라운드 31커밋 실측 + 컨테이너 협의 확정 3·6·7 반영) + **srv-2 테마 랜덤화 반영**
-> **v1.9:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (srv-2 테마 랜덤화 — 예시 URL·응답 theme 값도 CAFE로 정합화). §3.4 음성 제출 비동기 재편(e2e-3 A — 업로드 즉시 응답·백그라운드 채점)은 서버 구현 완료 확인 후 별도 반영 예정
+> **버전:** v1.10 (2026-09-09) — **실제 구현 코드 기준** (구 v1.9 = srv-2 테마 랜덤화 + 구 v1.8 = F-5~F-8 데모 UX 라운드 31커밋 실측) + **e2e-3 A·F 확정분 반영**
+> **v1.10:** §3.4 음성 제출 **비동기 재편**(e2e-3 A — 제출 응답=업로드 확인 즉시·score=0·TURN SUBMITTED 전환·백그라운드 채점 후 SCORED·8턴 감지 완화+멱등 가드)·§3.4 talk **첫 턴 소비 시점 계약 신설**(e2e3-F — 화면 진입 시 첫 talk(빈 파트) 1회·initChat null 전달 재발 해소). POST /sessions/chat(FAB 직입)은 구현 확정 후 차기 반영
+> **v1.9:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (srv-2 테마 랜덤화 — 예시 URL·응답 theme 값도 CAFE로 정합화)
 > **v1.8 핵심 정정:** §3.4 talk — 클라 Retrofit에 `@Multipart` 필수(@Part 최소 1 part — 첫 턴도 빈 file part 전송). §3.5 finish 호출 시점 = **AI 대화 종료(학습 완료 판정) 시점 1회** — 문제 8턴 직후 호출 시 userTalkAnswers=0이라도 status=COMPLETED로 닫혀 이후 talk 전부 E0401("진행 중인 세션이 아닙니다") 발생(실측). 간이 데이터 적재 시점(문제 8개 채점 완료 감지·/report/problems 백그라운드)은 기존대로
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
@@ -136,20 +137,21 @@
 // ListenSubmitData — LISTEN은 백엔드 자체채점, 즉시 응답
 { "turnId": 501, "score": 100, "correct": true }
 
-// VoiceSubmitData — 스텁 채점 0.8~1.5초 후
+// VoiceSubmitData — [e2e3-A v1.10] 제출 즉시 응답 (업로드 확인까지만 대기)
+// 실제 채점은 백그라운드 워커가 수행 — TURN은 제출 직후 SUBMITTED, 채점 완료 시 SCORED로 갱신
 {
   "turnId": 502,
-  "score": 82.0,
+  "score": 0,                    // 즉시 응답에서는 항상 0 — 실제 점수는 보고서에서 수령
   "voiceRecordId": 9002,
   "userVoiceEval": {
-    "durationSecond": 7, "syllables": 12,
-    "speakingTime": 2.4, "articulationTime": 1.8,
-    "text": "포도!"          // STT — TURN.answer_text 적재
+    "durationSecond": 0, "syllables": 0,          // 즉시 응답에서는 전부 0/빈 텍스트
+    "speakingTime": 0, "articulationTime": 0,
+    "text": ""                     // STT는 백그라운드 채점 완료 시 TURN.answer_text 적재
   }
 }
 ```
-- 제출 시 백엔드: OCI 업로드 + VOICE_RECORD USER 행(발화지표 3종) + TURN.score/answer_text + status=SCORED
-- 클라는 응답 score를 **누적** (세션상세 GET API 부재 — 결과 화면 Intent 전달 방식)
+- 제출 시 백엔드(e2e3-A v1.10): OCI 업로드 + 공유폴더 사본 기록 + TURN PENDING→**SUBMITTED** 즉시 전환 + VOICE_RECORD USER 행(지표 null) + 응답 즉시 반환 → afterCommit 백그라운드 워커가 컨테이너 채점 → TURN SCORED + VOICE_RECORD 지표 UPDATE. 8문제 전부 SUBMITTED 이상 시점에 간이 보고서 트리거(멱등 가드 — AQ 이미 적재 세션 재호출 금지)
+- 클라는 응답 score를 누적하지 않는다 — 즉시 응답 score=0이며 실제 점수는 간이/상세 보고서에서 수령 (세션 화면 score 즉시 표시 없음 — F-7 확정)
 
 ### 3.3 POST /{sessionId}/turns/{turnId}/hint — 힌트 요청
 
@@ -175,7 +177,8 @@
   "userText": "오늘은 카페에 갔어요" }   // 이번 턴 유저 STT — ✅ B-2 수정 완료: 음성 턴은 스텁 더미 STT 반환(첫 호출은 null 유지), 클라는 null 시 "(인식된 말 없음)" 표시
 ```
 - 데모 하드캡: `demo.talk-turn-limit=8`(v1.6 교체 — 유저 답변 수 기준) — 초과 제출 시 E0401(이야기 턴 한도 초과) → 클라 [학습 결과 보기] 전환
-- **클라 Retrofit 계약(v1.8 실측):** `@Multipart` + `@Part file: MultipartBody.Part?` 조합에서 **part를 null로 보내면 IllegalStateException("Multipart body must have at least one part")** — 첫 턴도 빈 file part 필수. 예외는 요청 전 발생하므로 BE 로그에 흔적 없음(진단 포인트)
+- **클라 Retrofit 계약(v1.8 실측):** `@Multipart` + `@Part file: MultipartBody.Part?` 조합에서 **part를 null로 보내면 IllegalStateException("Multipart body must have at least one part")** — 첫 턴도 빈 file part 필수. 예외는 요청 전 발생하므로 BE 로그에 흔적 없음(진단 포인트). **[e2e3-F v1.10 재발 해소 실측]:** initChat(화면 진입 첫 호출)이 partFor(null) 없이 null을 직접 전달해 동일 예외 2연패 — 클라 수정으로 해소(진단서 [1] 확정, e2e3-F 커밋 c797070). 신규 multipart API 추가 시 "호출부 null 전달" 재발 주의 — partFor 헬퍼 경유 필수
+- **[e2e3-F v1.10] 첫 턴 소비 시점 계약:** AI 대화 화면 진입 시점에 클라가 첫 talk(빈 파트)를 호출해 BE 첫 턴(AI 개시)을 소비한다 — 첫 음성 제출은 BE 기준 2번째 턴(음성 필수)으로 처리되며, 유저 STT가 그 턴의 answer_text로 적재된다. 클라 chatTalkStarted 플래그로 첫 호출 중복 방지
 - ⚠️ **finish 호출 시점 계약(v1.8 확정):** 클라는 문제 8턴 완료 시점에 finish를 호출하지 않는다 — finish는 **AI 대화 안내 → 대화 4~8턴 → 학습 완료 클릭 시점 1회**. 8턴 직후 호출하면 userTalkAnswers=0으로 status=COMPLETED 세팅 → 이후 talk 전부 E0401(실측 재현). 간이 데이터 적재는 8문제 채점 완료 감지 백그라운드(/report/problems)가 이미 담당 — finish의 역할은 종료 판정
 - 조기종료(구 데모): 클라가 `/finish` 호출 — ⏳ **v1.6 협의로 개편 예정**: 1~3턴 중단=학습 중단 판정(우는 덕분이 팝업 → total 미호출) / 4턴째 답변 후 [학습 마치기]=학습 완료 판정(total 호출, 유저 4턴 답변까지만). 데모 구현은 구 규약 유지 — 백엔드 작업 세션에서 판정 로직 반영
 
@@ -412,4 +415,5 @@ Authorization: Bearer {accessToken}
 | v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
 | v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |
+| v1.10 | 2026-09-09 | **e2e-3 A·F 확정분 반영 (매니저 재실측 완료분):** §3.2 음성 제출 **비동기 재편**(e2e3-A — VoiceSubmitData 즉시 응답=score 0·eval 전부 0/빈텍스트·voiceRecordId 계약 유지, TURN PENDING→SUBMITTED 즉시 전환+VOICE_RECORD USER 행 지표 null 적재, afterCommit 백그라운드 워커 컨테이너 채점→SCORED+지표 UPDATE, 8턴 감지 "전부 SUBMITTED 이상" 완화+AQ 멱등 가드, 재제출 멱등=기존 USER 행 재사용 UQ 해소)·§3.4 talk **첫 턴 소비 시점 계약 신설**(e2e3-F — initChat이 빈 파트로 첫 talk 1회 호출해 BE 첫 턴 소비, 이후 음성 제출=2번째 턴·null 전달 재발 해소 c797070). POST /sessions/chat(FAB)·간이보고서 인텐트 전달(FE 세부)은 구현 확정 후 차기 반영 |
 | v1.9 | 2026-09-09 | **srv-2 테마 랜덤화 실측 반영:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (오늘의 학습 랜덤 풀 갱신) — 예시 URL(`thema=CAFE`)·응답 예시(`"theme": "CAFE"`) 정합화. §3.4 음성 제출 비동기 재편(e2e-3 A)·POST /sessions/chat 신설(e2e-3 F)은 구현 완료 확인 후 반영 — 현재 동기 채점(0.8~1.5초) 표기 유효 |
