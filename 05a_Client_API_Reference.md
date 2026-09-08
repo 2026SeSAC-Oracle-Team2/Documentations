@@ -1,6 +1,7 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.8 (2026-09-08) — **실제 구현 코드 기준** (Android feat/f6-session-ux main 머지 e809df7 — F-5~F-8 데모 UX 라운드 31커밋 실측) + **컨테이너 협의 확정 (3·6·7) 반영**
+> **버전:** v1.9 (2026-09-09) — **실제 구현 코드 기준** (구 v1.8 = F-5~F-8 데모 UX 라운드 31커밋 실측 + 컨테이너 협의 확정 3·6·7 반영) + **srv-2 테마 랜덤화 반영**
+> **v1.9:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (srv-2 테마 랜덤화 — 예시 URL·응답 theme 값도 CAFE로 정합화). §3.4 음성 제출 비동기 재편(e2e-3 A — 업로드 즉시 응답·백그라운드 채점)은 서버 구현 완료 확인 후 별도 반영 예정
 > **v1.8 핵심 정정:** §3.4 talk — 클라 Retrofit에 `@Multipart` 필수(@Part 최소 1 part — 첫 턴도 빈 file part 전송). §3.5 finish 호출 시점 = **AI 대화 종료(학습 완료 판정) 시점 1회** — 문제 8턴 직후 호출 시 userTalkAnswers=0이라도 status=COMPLETED로 닫혀 이후 talk 전부 E0401("진행 중인 세션이 아닙니다") 발생(실측). 간이 데이터 적재 시점(문제 8개 채점 완료 감지·/report/problems 백그라운드)은 기존대로
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
@@ -74,8 +75,8 @@
 | `thema` | String | query | **/theme 전용** — TEST/HOSPITAL/CAFE (이외 E0400 "허용되지 않는 테마"). 대소문자 무관(소문자 cafe→CAFE) |
 
 **동작 (v1.6 D-5):** 엔드포인트 2종 분기 —
-- `POST /sessions/today?userId=26` — 테마 **랜덤**(`demo.themes` 프로퍼티, 현재 TEST) + 무작위 출제 → LEARNING_SESSION.type=`today`
-- `POST /sessions/theme?userId=26&thema=TEST` — 테마 **고정** → LEARNING_SESSION.type=`theme` (기획 시나리오 플로우는 컨텐츠 확정 후 — 현재 스텁은 today와 동일 무작위 출제, 컨테이너 엔드포인트만 분기)
+- `POST /sessions/today?userId=26` — 테마 **랜덤**(`demo.themes` 프로퍼티, 현재 **HOSPITAL,CAFE** — srv-2 테마 랜덤화 운영값, 구 TEST) + 무작위 출제 → LEARNING_SESSION.type=`today`
+- `POST /sessions/theme?userId=26&thema=CAFE` — 테마 **고정** → LEARNING_SESSION.type=`theme` (기획 시나리오 플로우는 컨텐츠 확정 후 — 현재 스텁은 today와 동일 무작위 출제, 컨테이너 엔드포인트만 분기)
 - 공통: IMAGE_THEMA 이미지 풀 → 컨테이너 세션 생성 (스텁 2~3초) → TURN 8행 INSERT(PENDING) + VOICE_RECORD AI 행 → 응답
 - `POST /sessions/v2?userId=26` — **하위호환 유지**(클라 데모가 사용 중) — today와 동일 동작
 
@@ -83,7 +84,7 @@
 // 응답 data — SessionCreateData (v1.6: type 필드 추가)
 {
   "sessionId": 101,
-  "theme": "TEST",
+  "theme": "CAFE",
   "type": "today",      // D-5: today | theme — 요청 엔드포인트에 따른 세션 종류
   "turns": [
     {
@@ -232,7 +233,7 @@ ai:
     base-url: http://ai-container:8000   ← (주입 TODO 상태 — 아래 6.3)
 
 demo:
-  themes: TEST            ← 운영: TEST,HOSPITAL,CAFE
+  themes: HOSPITAL,CAFE            ← srv-2 운영값 (구 TEST)
   talk-turn-limit: 3      ← 운영: 8 (또는 제거로 무제한)
 ```
 
@@ -411,3 +412,4 @@ Authorization: Bearer {accessToken}
 | v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
 | v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |
+| v1.9 | 2026-09-09 | **srv-2 테마 랜덤화 실측 반영:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (오늘의 학습 랜덤 풀 갱신) — 예시 URL(`thema=CAFE`)·응답 예시(`"theme": "CAFE"`) 정합화. §3.4 음성 제출 비동기 재편(e2e-3 A)·POST /sessions/chat 신설(e2e-3 F)은 구현 완료 확인 후 반영 — 현재 동기 채점(0.8~1.5초) 표기 유효 |
