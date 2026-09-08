@@ -18,7 +18,7 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | [04_Database_Design.md](04_Database_Design.md) | DB 설계 — 현행 스키마 전체 (9테이블 + 제약 + 규약) | 중간 |
 | [05_API_Design.md](05_API_Design.md) | 클라 ↔ BE API — 인증/사용자/세션/턴/리포트 | 개발 중 |
 | [05a_Client_API_Reference.md](05a_Client_API_Reference.md) | **클라↔BE 실구현 명세서** (demo 기준 역추적 + 스텁↔real 전환 가이드) | 개발 중 |
-| [06_Session_Flow_Spec.md](06_Session_Flow_Spec.md) | **세션 기획 단일 진실 원천** — 턴 구조, 타입 매트릭스, 채점/리포트 흐름, pending | 중간 |
+| [06_Session_Flow_Spec.md](06_Session_Flow_Spec.md) | **세션 기획 단일 진실 원천** — 턴 구조, 타입 매트릭스, 채점/리포트 흐름, pending (v1.8 — 데모 UX 라운드 확정 반영) | 중간 |
 | [07_WBS.md](07_WBS.md) | WBS / 개발 일정 / 팀 역할 | 낮음 |
 | `adr/` | 아키텍처 의사결정 기록 (ADR-001~010) | 결정 시 |
 | [03a](03a_AI_Container_API_Reference.md) 내 프롬프트 예시 별첨: `11a_memory_prompt_example.md` | userMemory 관리 LLM 프롬프트 예시 | |
@@ -44,7 +44,10 @@ SeSAC TeamProject 공식 문서 — AI 기반 발화 연습 문제풀이 앱
 | **최종 기획 확정** (LISTEN 세분화·가입 설문·세션 흐름 시간 통제·대시보드 실구현 설계) | 📋 기획 완료 (2026-09-04 협의 최종 — 계약 v1.7·DB v2.6 반영, 구현 대기) |
 | 데모 (오늘의 학습) | 🎉 완료 (2026-09-03) — 최종 발표 9/10 |
 | 대시보드/기록/설정 | ✅ D-7 (2026-09-06 — Android demo ee2c41a+1de328e+ed4bc42 push. 대시보드 실데이터화+세부 보고서 SessionDetailActivity. ProfileEdit 확장·E2E는 D-7b 이월) |
-| 최종 발표 | 9/10 |
+| **데모 UX 라운드** (F-5 유형 매트릭스 + F-7 수정1~7 + F-8 로딩/가이드/AI대화 연결) | ✅ 완료 (2026-09-08 — Android feat/f6-session-ux 31커밋 main 머지 e809df7. 유형×요소 기획 정합·오버레이 제출·카운트다운 통일·가이드 4단+예시 리소스·AI 대화 talk 연결 — 사용자 실기 전항목 통과) |
+| F-6 데모 리소스·디버그 도구 | ⏸️ 미실시 (사용자 판단 — 데모 UX 직접 테스트로 대체) |
+| v2.2.0 | 2026-09-08 | **데모 UX 라운드 완료 반영 (FE feat/f6-session-ux 31커밋 main 머지 e809df7, ls-remote 일치·Author NonokEE <shshrdl@naver.com> 통일):** F-5 유형×요소 매트릭스 기획 정합(LISTEN_PICTURE 이미지 그리드·WAIT 사진 관찰·가이드 이미지 제거·턴 잔존 차단 — 4커밋), F-7 수정1~7(힌트 카드 누적·낭독TTS 폐지 A2·다시듣기 화면유지+카운트다운 연속·선택지 하이라이트 라운드클립·카운트다운 통일 6커밋·카드 위치/크기 통일·제출 오버레이 fade-in+30초 강제제출 전용 문구 — 17커밋), F-8(로딩 화면 시안 L2 bounce+첫 프레임 렌더·가이드 4단+예시 리소스 4종 nodpi·AI 대화 연결 — initChat 후 talk multipart·@Multipart+최소 1 part 2회 정정·B-10/B-11 회귀 정정 — 7커밋), B-10 상단 480dp 공백+B-11 말풍선 곡률 반전 해소. BE 무접촉(curl 프로브만)·finish 호출 시점 계약 확정(AI대화 종료 1회 — 8턴 직후 호출 시 COMPLETED 선점으로 talk E0401 실측). 검증: WSL 실빌드 15회+ SUCCESSFUL·사용자 실기 전항목 통과·APK 21종+md5 전수 기록. 문서: 06 v1.8·05a v1.8·03a v1.10 갱신. F-6 데모리소스·디버그 도구 미실시(사용자 판단) |
+| v2.1.6 | 2026-09-06 |
 
 ## 문서 규칙
 

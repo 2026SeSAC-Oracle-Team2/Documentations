@@ -1,6 +1,7 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.7 (2026-09-06) — **실제 구현 코드 기준** (demo 브랜치, VM ~/app 9b35395 D-8②b, Android d465298→1fc9825) + **컨테이너 협의 확정 (3·6·7) 반영** (구현 예정분은 ⏳ 표기)
+> **버전:** v1.8 (2026-09-08) — **실제 구현 코드 기준** (Android feat/f6-session-ux main 머지 e809df7 — F-5~F-8 데모 UX 라운드 31커밋 실측) + **컨테이너 협의 확정 (3·6·7) 반영**
+> **v1.8 핵심 정정:** §3.4 talk — 클라 Retrofit에 `@Multipart` 필수(@Part 최소 1 part — 첫 턴도 빈 file part 전송). §3.5 finish 호출 시점 = **AI 대화 종료(학습 완료 판정) 시점 1회** — 문제 8턴 직후 호출 시 userTalkAnswers=0이라도 status=COMPLETED로 닫혀 이후 talk 전부 E0401("진행 중인 세션이 아닙니다") 발생(실측). 간이 데이터 적재 시점(문제 8개 채점 완료 감지·/report/problems 백그라운드)은 기존대로
 > **작성 방식:** 구현된 컨트롤러/DTO를 역추적해 작성 — 스펙 문서(`05_API_Design.md`)와의 차이는 ⚠️ 표기
 > **Base URL:** `http://{VM주소}` (:80, nginx 경유) · 응답 봉투: `{ success, data, timestamp }` / 에러: `{ success: false, error: { code, message, detail, timestamp } }`
 
@@ -158,7 +159,7 @@
 | 파라미터 | 위치 | 비고 |
 |----------|------|------|
 | `userId` | query | |
-| `file` | multipart, **required=false** | **첫 호출은 multipart 없이 일반 POST** (AI가 먼저 개시). 이후 턴은 음성 첨부 |
+| `file` | multipart, **required=false** | **v1.8 정정 — 모든 호출 multipart 전송(최소 1 part)**: 첫 턴은 빈 file part(0바이트) 전송(@Multipart는 파트 0개 불가 — Retrofit IllegalStateException 실측). BE는 `talkTurns.isEmpty()`로 첫 턴 판정하므로 빈 파트 무해 — AI가 먼저 개시, 이후 턴은 음성 첨부 |
 
 ```json
 // 응답 data — TalkData (스텁 1~2초)
@@ -166,7 +167,9 @@
   "aiText": "아까 문제 푸느라 고생했네요! 오늘 하루 어땐어요?",  // TURN.prompt_text
   "userText": "오늘은 카페에 갔어요" }   // 이번 턴 유저 STT — ✅ B-2 수정 완료: 음성 턴은 스텁 더미 STT 반환(첫 호출은 null 유지), 클라는 null 시 "(인식된 말 없음)" 표시
 ```
-- 데모 하드캡: `demo.talk-turn-limit=3` — 4번째 제출 시 E0401(세션 이야기 턴 소진) → 클라 종료 안내
+- 데모 하드캡: `demo.talk-turn-limit=8`(v1.6 교체 — 유저 답변 수 기준) — 초과 제출 시 E0401(이야기 턴 한도 초과) → 클라 [학습 결과 보기] 전환
+- **클라 Retrofit 계약(v1.8 실측):** `@Multipart` + `@Part file: MultipartBody.Part?` 조합에서 **part를 null로 보내면 IllegalStateException("Multipart body must have at least one part")** — 첫 턴도 빈 file part 필수. 예외는 요청 전 발생하므로 BE 로그에 흔적 없음(진단 포인트)
+- ⚠️ **finish 호출 시점 계약(v1.8 확정):** 클라는 문제 8턴 완료 시점에 finish를 호출하지 않는다 — finish는 **AI 대화 안내 → 대화 4~8턴 → 학습 완료 클릭 시점 1회**. 8턴 직후 호출하면 userTalkAnswers=0으로 status=COMPLETED 세팅 → 이후 talk 전부 E0401(실측 재현). 간이 데이터 적재는 8문제 채점 완료 감지 백그라운드(/report/problems)가 이미 담당 — finish의 역할은 종료 판정
 - 조기종료(구 데모): 클라가 `/finish` 호출 — ⏳ **v1.6 협의로 개편 예정**: 1~3턴 중단=학습 중단 판정(우는 덕분이 팝업 → total 미호출) / 4턴째 답변 후 [학습 마치기]=학습 완료 판정(total 호출, 유저 4턴 답변까지만). 데모 구현은 구 규약 유지 — 백엔드 작업 세션에서 판정 로직 반영
 
 ### 3.5 POST /{sessionId}/finish — 세션 종료 + 간이 보고서 (v1.6 D-5 재편)
@@ -395,6 +398,7 @@ Authorization: Bearer {accessToken}
 | v1.0 | 2026-09-04 | 초안 — demo 브랜치 실구현 역추적 작성 (SessionFlowController/SessionFlowDtos/AiContainerClient/SecurityConfig/application.yml 실측) |
 
 
+| v1.8 | 2026-09-08 | **F-5~F-8 데모 UX 라운드 실측 반영 (Android feat/f6-session-ux main 머지 e809df7):** §3.4 talk 계약 정정 — **클라 Retrofit `@Multipart` 필수 + 최소 1 part**(첫 턴도 빈 file part 전송, null 전송 시 IllegalStateException 실측 — "multipart 없이 일반 POST" 기존 표기 폐지). **§3.5 finish 호출 시점 계약 명시** — AI 대화 종료(학습 완료 클릭) 시점 1회, 문제 8턴 직후 호출 금지(유저 talk 0턴에서 finish → status=COMPLETED → 이후 talk 전부 E0401 실측. BE 로그: "학습 완료 판정: 유저 talk 답변 0턴 → COMPLETED" 재현). 클라 오류 표시 규약: BE 비즈니스 오류(E0401 등)는 서버 메시지 원문 토스트, 네트워크 계열만 "네트워크 오류" 문구(사용자 피드백 ③) |
 | v1.7 | 2026-09-06 | **D-8②b 홈 통계 API 실구현 반영:** **§8.4 신설** — GET /api/v1/users/me/stats(JWT·scores 동일 봉투): streakDays(완료 세션 일자 연속·서버 로컬 KST·오늘/어제 소급 — 오늘 완료 없어도 어제까지 연속이면 유지·중단 세션 제외), avgScore(최근 10개 완료 세션 AQ 평균 소수 1자리 — **ADR-009 아님, 최근 10개 전부 평균** 명시), deltaScore(최근 10 평균 − 직전 10 평균·11번째 없으면 null·부호 포맷은 클라). 완료 세션 필터 = `STATUS != 'COMPLETED_NO_TALK' AND AQ IS NOT NULL` — §8.2 history와 공용 프레디케이트(CompletedSessionFilter) 공유. 실측: user 26 streak=1·avg=72.3·delta=null(손계산 일치), 신규 유저 0/null, 중단 세션(AQ 적재분 포함) 불반영 |
 | v1.6.1 | 2026-09-06 | **D-8② 리팩토링 계약 불변 확인 (내용 갱신 없음):** SessionFlowService 1,046행 관심사별 분할(커밋 42c6a49+3a8772f — SessionCreationService·SessionScoringService·SessionReportQueryService·ScoreCalculationService·SessionTurnSupport, SessionFlowService=퍼사드) 수행 — **엔드포인트·JSON 키·인증 방식 전부 무변경, 회귀 실측 ①~⑧ diff 0으로 동작 불변 증명**(scores·history·report76 리팩토링 전/후 완전 동일). 부수 구현: RealAiContainerClient base-url이 ai.container.base-url 프로퍼티 주입으로 변경(기본값 http://localhost:8000 유지 — 서버 내부 호출값, 클라 계약과 무관). 이 문서는 v1.6 그대로 유효 |
 | v1.6 | 2026-09-06 | **D-5 대시보드+세션 플로우 실구현 전면 갱신:** §3.1 세션 2종 분기(POST /sessions/today·/theme — thema 쿼리파라미터 TEST/HOSPITAL/CAFE 이외 E0400·소문자 허용, /v2는 하위호환 유지, SessionCreateData.type 필드 신설, LISTEN 세분화 D-2 완료 표기), §3.5 finish 재편(간이 보고서 응답 — talk/total 항상 null·중단/완료 판정 규약·userAQ=REP_SCORES 캐시 조회 교체), §8.2 ✅ D-5 실구현(JWT 필수·STATUS != COMPLETED_NO_TALK **AND AQ IS NOT NULL** 규약 확정·페이징 미도입), §8.3 ✅ D-5 실구현(userId 쿼리파라미터 소유 검증·radar TURN 집계·answer 계약 확정 — LISTEN_TEXT=선택지 텍스트 추출·LISTEN_PICTURE=image_id context·REPORT_VIEWED_AT null일 때만 기록·중단 세션 E0404), §0 인증 현황 갱신(history JWT·report userId 병용), §6.1/6.2 전환 가이드 갱신(talk-turn-limit 8·계약 키 표 2종 엔드포인트+리포트 2단계). **클라 D-6 연동 시 주의: finish 응답 talk/total null — 세부 보고서는 §8.3에서 수령** |
