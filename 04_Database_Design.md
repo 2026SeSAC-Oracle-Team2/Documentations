@@ -121,7 +121,6 @@ SPEECHAPP_CONTENT
 | `USER_ID` | NUMBER(19) | NOT NULL, FK→app_user | |
 | `THEME` | VARCHAR2(30) | | 서버 랜덤 선택 (TEST/HOSPITAL/CAFE) |
 | `SESSION_NAME` 🆕 (v2.6) | VARCHAR2(100) | | **세션 표시명** — 학습 기록 카드용. today=`오늘의 학습 - {테마명}` / theme=`병원에서 진료받기`·`동네카페에서`(시나리오 플로우 고정 시퀀스 — 컨텐츠 팀 확정분) |
-
 | `TYPE` 🆕 (v1.3) | VARCHAR2(20) | | 세션 종류 — `today`(오늘의 학습: 테마 랜덤+무작위 출제) / `theme`(테마별 학습: 기획 시나리오 플로우). 컨테이너 엔드포인트 분기(/sessions/today vs theme)와 매핑 |
 | `STATUS` | VARCHAR2(20) | DEFAULT 'IN_PROGRESS' | IN_PROGRESS / COMPLETED / **COMPLETED_NO_TALK**(이야기 턴 없이 조기종료 — talk/total 피드백 NULL 유지, v1.3) |
 | `AQ` | NUMBER(3) | nullable, CHECK(0~100) | **세션 총점** — 8문제 점수만으로 산출 (AI 대화 미포함, v1.3 확정). /report/problems 시점에 적재. 리포트 전 NULL |
