@@ -1,6 +1,6 @@
 # 클라이언트 ↔ 백엔드 API 명세서 (Android ↔ Spring Boot)
 
-> **버전:** v1.10 (2026-09-09) — **실제 구현 코드 기준** (구 v1.9 = srv-2 테마 랜덤화 + 구 v1.8 = F-5~F-8 데모 UX 라운드 31커밋 실측) + **e2e-3 A·F 확정분 반영**
+> **버전:** v1.11 (2026-09-09) — **실제 구현 코드 기준** (구 v1.9 = srv-2 테마 랜덤화 + 구 v1.8 = F-5~F-8 데모 UX 라운드 31커밋 실측) + **e2e-3 A·F 확정분 반영**
 > **v1.10:** §3.4 음성 제출 **비동기 재편**(e2e-3 A — 제출 응답=업로드 확인 즉시·score=0·TURN SUBMITTED 전환·백그라운드 채점 후 SCORED·8턴 감지 완화+멱등 가드)·§3.4 talk **첫 턴 소비 시점 계약 신설**(e2e3-F — 화면 진입 시 첫 talk(빈 파트) 1회·initChat null 전달 재발 해소). POST /sessions/chat(FAB 직입)은 구현 확정 후 차기 반영
 > **v1.9:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (srv-2 테마 랜덤화 — 예시 URL·응답 theme 값도 CAFE로 정합화)
 > **v1.8 핵심 정정:** §3.4 talk — 클라 Retrofit에 `@Multipart` 필수(@Part 최소 1 part — 첫 턴도 빈 file part 전송). §3.5 finish 호출 시점 = **AI 대화 종료(학습 완료 판정) 시점 1회** — 문제 8턴 직후 호출 시 userTalkAnswers=0이라도 status=COMPLETED로 닫혀 이후 talk 전부 E0401("진행 중인 세션이 아닙니다") 발생(실측). 간이 데이터 적재 시점(문제 8개 채점 완료 감지·/report/problems 백그라운드)은 기존대로
@@ -33,6 +33,14 @@
   "isNewUser": true
 }
 ```
+- **[e2e5-hotfix v1.11] isNewUser 정의 — 3단 판정 (e2e5-hotfix 커밋 7465dc8):**
+  (a) uid 행 존재 → 기존 로그인·isNewUser=false
+  (b) uid miss + email 행 존재 → **email 병합 로그인**(INSERT 없음 — EMAIL 유니크
+      SYS_C008308 안전)·프로필 완성도 판정: nickname==null(가입 3단계 미완료) →
+      **isNewUser=true**(클라 Signup 재개) / nickname 있음 → false
+  (c) 둘 다 miss → createNewUser 신규 INSERT·isNewUser=true
+  → 클라 분기 계약 유지: isNewUser=true → Signup / !isNewUser && userAq==null →
+  Survey / else → Home. uid 불일치 병합 경로는 WARN 로그 1건 기록(추적성).
 - ⚠️ **응답 키는 camelCase (`accessToken` 등)** — v1.7까지 snake_case로 표기한 것은 문서 오류
   (2026-09-07 F-3 연동 실측으로 발견: snake 파싱 시 Gson이 필드를 못 찾아 토큰이 누락된 것처럼
   보이는 증상 발생 — 요청 user 객체는 camelCase라 정상 수신되는 것이 감별 포인트)
@@ -415,5 +423,6 @@ Authorization: Bearer {accessToken}
 | v1.5 | 2026-09-05 | **D-3 가입 플로우 API 실구현 반영:** §2 전면 갱신 — PATCH /me 확장(hobbies/sex/birthDate ISO/tagIds 전량 교체·>5개 E0400·없는 tag_id E0404·birthDate 파싱 실패 E0400), GET /me/tags 신설(15종 마스터), POST /me/survey 신설(서버 산출 환산 AQ 30/70/90 + REP_SCORES upsert — 중복 응답 허용), GET /me/scores 신설(§8.1 ⏳→실구현 전환), DELETE /me FK 역순 8단계 확장(USER_PROFILE_TAGS→REP_SCORES 추가, TAGS 마스터 보존). UserDto 확장 5필드(hobbies/sex/birthDate/tags/userAq — 하위호환 추가만), userAq null=설문 미응답 재노출 판별 기준 표기 |
 | v1.4 | 2026-09-04 | **컨테이너 협의 확정 (7) 반영:** §8 신설(⏳ 구현 예정) — 대시보드/세부 보고서 API 3종(GET /users/me/scores 대표점수·GET /users/me/sessions/history 학습 카드(STATUS != COMPLETED_NO_TALK)·GET /sessions/{id}/report 세부 보고서). 방사형 출처 구분(대시보드=대표점수 캐시 / 세부=TURN 집계), REPORT_VIEWED_AT 갱신 연동, 학습 중단 세션 제외 |
 | v1.1 | 2026-09-03 | B-1~B-3 수정 반영 — DELETE /me 204 확정(B-1 FK 역순 하드딜리트+OCI 정리), talk userText 스텁 더미 STT(B-2), §7 이슈 전건 해결 표기 |
+| v1.11 | 2026-09-09 | **e2e5-hotfix isNewUser 정의 갱신 (§1.1):** 로그인 인증 3단 판정 — (a) uid 행 존재=기존 로그인 (b) uid miss+email 행 존재=**email 병합 로그인**(INSERT 없음 — ORA-00001 SYS_C008308 500 근원 제거) + 프로필 완성도 기반 isNewUser(nickname==null=가입 3단계 미완료 → true로 응답해 Signup 재개) (c) 둘 다 miss=신규 INSERT. 클라 goNext 분기 계약 무변경(FE 수정 0건). 원인: 클라 로그아웃이 FirebaseAuth signOut 없이 토큰 클리어만 — 재가입 uid 갈림 케이스에서 동일 email INSERT 충돌(사용자 실측 3회 재현) |
 | v1.10 | 2026-09-09 | **e2e-3 A·F 확정분 반영 (매니저 재실측 완료분):** §3.2 음성 제출 **비동기 재편**(e2e3-A — VoiceSubmitData 즉시 응답=score 0·eval 전부 0/빈텍스트·voiceRecordId 계약 유지, TURN PENDING→SUBMITTED 즉시 전환+VOICE_RECORD USER 행 지표 null 적재, afterCommit 백그라운드 워커 컨테이너 채점→SCORED+지표 UPDATE, 8턴 감지 "전부 SUBMITTED 이상" 완화+AQ 멱등 가드, 재제출 멱등=기존 USER 행 재사용 UQ 해소)·§3.4 talk **첫 턴 소비 시점 계약 신설**(e2e3-F — initChat이 빈 파트로 첫 talk 1회 호출해 BE 첫 턴 소비, 이후 음성 제출=2번째 턴·null 전달 재발 해소 c797070). POST /sessions/chat(FAB)·간이보고서 인텐트 전달(FE 세부)은 구현 확정 후 차기 반영 |
 | v1.9 | 2026-09-09 | **srv-2 테마 랜덤화 실측 반영:** §3.1 `demo.themes` 운영값 TEST → **HOSPITAL,CAFE** (오늘의 학습 랜덤 풀 갱신) — 예시 URL(`thema=CAFE`)·응답 예시(`"theme": "CAFE"`) 정합화. §3.4 음성 제출 비동기 재편(e2e-3 A)·POST /sessions/chat 신설(e2e-3 F)은 구현 완료 확인 후 반영 — 현재 동기 채점(0.8~1.5초) 표기 유효 |
